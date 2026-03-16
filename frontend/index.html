@@ -265,6 +265,7 @@
               <button class="control-btn" id="skeleton-toggle">🦴 Hide Skeleton</button>
               <button class="control-btn">🔗 Share Look</button>
               <button class="control-btn" id="save-look-btn">🤍 Save Look</button>
+              <button class="control-btn" onclick="generateTryOnImage()">🧠 Generate AI Try-On</button>
               <label class="control-btn" style="gap:10px">
                 📏 Height
                 <input type="number" id="height-input" value="170" min="120" max="220" style="width:72px;border:none;background:transparent;color:var(--text-primary);font-weight:700;outline:none">
@@ -275,6 +276,8 @@
             <!-- Fit Score card (shown when garment is selected) -->
             <div id="fit-score-card" class="fit-score-card" style="display:none"></div>
             <div id="body-measurements-card" class="fit-score-card" style="display:none"></div>
+            <div id="skin-analysis-card" class="fit-score-card" style="display:none"></div>
+            <div id="generated-tryon-card" class="fit-score-card" style="display:none"></div>
           </div>
 
           <!-- Right: Garment Panel sidebar -->
@@ -384,6 +387,7 @@
               AI analyzes your preferences and generates 6 curated outfit combinations
             </p>
           </div>
+          <div id="reco-skin-guidance" class="card" style="display:none;padding:20px;margin-bottom:24px"></div>
 
           <!-- Empty state (before generation) -->
           <div class="empty-state" id="reco-empty">

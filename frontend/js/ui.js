@@ -42,6 +42,38 @@ const LANDING_STATS = [
     { value: '0', label: 'Looks Saved Yet' },
 ];
 
+const USD_TO_INR = 83;
+
+function formatINR(amountUsd) {
+    const inr = Math.round((Number(amountUsd) || 0) * USD_TO_INR);
+    return `₹${inr.toLocaleString('en-IN')}`;
+}
+
+function skinGuidanceForTone(tone, undertone) {
+    const neutral = {
+        colors: ['Emerald', 'Navy', 'Charcoal', 'Teal', 'Burgundy'],
+        patterns: ['Vertical stripes', 'Small checks', 'Minimal prints', 'Solid blocks'],
+    };
+    const guides = {
+        fair: {
+            warm: { colors: ['Coral', 'Olive', 'Warm beige', 'Rust', 'Mustard'], patterns: ['Soft florals', 'Thin stripes', 'Subtle geometrics'] },
+            cool: { colors: ['Royal blue', 'Lavender', 'Emerald', 'Rose pink', 'Charcoal'], patterns: ['Pinstripes', 'Plaids', 'Monochrome prints'] },
+            neutral: neutral,
+        },
+        medium: {
+            warm: { colors: ['Terracotta', 'Gold', 'Forest green', 'Camel', 'Maroon'], patterns: ['Paisley', 'Geometric motifs', 'Medium checks'] },
+            cool: { colors: ['Cobalt', 'Plum', 'Slate', 'Mint', 'Deep red'], patterns: ['Abstract prints', 'Structured stripes', 'Two-tone colorblocks'] },
+            neutral: neutral,
+        },
+        deep: {
+            warm: { colors: ['Burnt orange', 'Mustard', 'Olive', 'Chocolate', 'Copper'], patterns: ['Bold stripes', 'Ethnic motifs', 'Larger checks'] },
+            cool: { colors: ['Fuchsia', 'Electric blue', 'Violet', 'Crisp white', 'Ruby'], patterns: ['High-contrast prints', 'Chevron', 'Sharp geometrics'] },
+            neutral: neutral,
+        },
+    };
+    return guides[tone]?.[undertone] || neutral;
+}
+
 // ─── SECTION 1: SPA Navigation ────────────────────────────────────────────────
 
 /**
@@ -229,6 +261,9 @@ const tryOnState = {
     poseKeypointsWidth: 640,
     poseKeypointsHeight: 480,
     garmentRenderMode: 'stylized',
+    skinProfile: null,
+    fullBodyVisible: false,
+    generatedTryOnImage: '',
 };
 
 function initTryOnPage() {
@@ -257,12 +292,15 @@ function bindTryOnControls() {
             tryOnState.poseDetecting = false;
             tryOnState.poseKeypoints = null;
             tryOnState.latestMeasurements = null;
+            tryOnState.skinProfile = null;
+            tryOnState.fullBodyVisible = false;
             const hiddenImg = document.getElementById('hidden-img');
             if (hiddenImg) hiddenImg.src = url;
             renderTryOnCanvas();
             startCanvasLoop();
             updatePoseOverlay();
             updateMeasurementsUi();
+            updateSkinAnalysisUi();
         });
     }
 
@@ -299,6 +337,8 @@ function setTryOnMode(mode) {
     tryOnState.poseDetected = false;
     tryOnState.poseDetecting = false;
     tryOnState.poseKeypoints = null;
+    tryOnState.skinProfile = null;
+    tryOnState.fullBodyVisible = false;
 
     document.querySelectorAll('.mode-tab').forEach((tab) => {
         tab.classList.toggle('active', tab.dataset.mode === mode);
@@ -316,6 +356,7 @@ function setTryOnMode(mode) {
     renderTryOnCanvas();
     updatePoseOverlay();
     renderMeasurementsPage();
+    updateSkinAnalysisUi();
 }
 
 /** Render the canvas area depending on state. */
@@ -353,9 +394,12 @@ function clearUploadedPhoto() {
     tryOnState.poseDetecting = false;
     tryOnState.poseKeypoints = null;
     tryOnState.latestMeasurements = null;
+    tryOnState.skinProfile = null;
+    tryOnState.fullBodyVisible = false;
     renderTryOnCanvas();
     updatePoseOverlay();
     updateMeasurementsUi();
+    updateSkinAnalysisUi();
 }
 
 // ─── Canvas: Pose detection + measurements ───────────────────────────────────
@@ -579,6 +623,116 @@ function computeAndStoreMeasurements(kp) {
     if (!m) return;
     tryOnState.latestMeasurements = m;
     updateMeasurementsUi();
+}
+
+function sampleRgb(ctx, x, y) {
+    try {
+        const data = ctx.getImageData(Math.max(0, Math.floor(x)), Math.max(0, Math.floor(y)), 1, 1).data;
+        return [data[0], data[1], data[2]];
+    } catch {
+        return null;
+    }
+}
+
+function classifySkin(rgb) {
+    const [r, g, b] = rgb;
+    const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+    let tone = 'medium';
+    if (brightness > 175) tone = 'fair';
+    else if (brightness < 110) tone = 'deep';
+
+    const rg = r - g;
+    const gb = g - b;
+    let undertone = 'neutral';
+    if (rg > 12 && gb > 4) undertone = 'warm';
+    else if (b - r > 10 || g - r > 10) undertone = 'cool';
+
+    return { tone, undertone, rgb: `rgb(${r},${g},${b})` };
+}
+
+function evaluateBodyVisibility(kp, canvasHeight) {
+    const hasFace = Boolean(kp.nose);
+    const hasShoulders = Boolean(kp.leftShoulder && kp.rightShoulder);
+    const hasHips = Boolean(kp.leftHip && kp.rightHip);
+    const hasAnkles = Boolean(kp.leftAnkle && kp.rightAnkle);
+    const fullBody = hasAnkles && Math.max(kp.leftAnkle[1], kp.rightAnkle[1]) < canvasHeight * 0.99;
+    return {
+        hasFace,
+        hasUpperBody: hasFace && hasShoulders,
+        hasHalfBody: hasFace && hasShoulders && hasHips,
+        fullBody,
+    };
+}
+
+function updateSkinProfileFromFrame(ctx, kp, canvas) {
+    if (!kp || !kp.nose) return;
+    const pts = [
+        [kp.nose[0], kp.nose[1] + 12],
+        [kp.nose[0] - 14, kp.nose[1] + 16],
+        [kp.nose[0] + 14, kp.nose[1] + 16],
+    ];
+    const rgbVals = pts.map(([x, y]) => sampleRgb(ctx, x, y)).filter(Boolean);
+    if (!rgbVals.length) return;
+    const avg = rgbVals.reduce((acc, cur) => [acc[0] + cur[0], acc[1] + cur[1], acc[2] + cur[2]], [0, 0, 0]).map((v) => Math.round(v / rgbVals.length));
+    const profile = classifySkin(avg);
+    const body = evaluateBodyVisibility(kp, canvas.height);
+    const guide = skinGuidanceForTone(profile.tone, profile.undertone);
+    tryOnState.skinProfile = { ...profile, ...body, ...guide };
+    tryOnState.fullBodyVisible = body.fullBody;
+    updateSkinAnalysisUi();
+}
+
+function updateSkinAnalysisUi() {
+    const el = document.getElementById('skin-analysis-card');
+    if (!el) return;
+    if (!tryOnState.skinProfile) {
+        el.style.display = 'none';
+        return;
+    }
+    const p = tryOnState.skinProfile;
+    const bodyMsg = p.fullBody
+        ? 'Full body detected: best for accurate outfit fit.'
+        : (p.hasHalfBody ? 'Half body detected. Move back to show full body for best fit recommendations.' : 'Face/upper body detected. Show full body for better fit recommendations.');
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div class="fit-score-header">
+        <div class="fit-score-label">🎨 Skin & Frame Analysis</div>
+        <span class="fit-badge fit-good">${p.tone.toUpperCase()} • ${p.undertone}</span>
+      </div>
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px">${bodyMsg}</p>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:12px;color:var(--text-muted)">Detected skin swatch</span>
+        <span style="display:inline-block;width:28px;height:28px;border-radius:50%;border:1px solid var(--border-color);background:${p.rgb}"></span>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:6px"><strong style="color:var(--text-primary)">Best Colors:</strong> ${p.colors.join(', ')}</p>
+      <p style="font-size:13px;color:var(--text-secondary)"><strong style="color:var(--text-primary)">Best Patterns:</strong> ${p.patterns.join(', ')}</p>
+    `;
+    renderSkinGuidanceForReco();
+}
+
+function renderSkinGuidanceForReco() {
+    const el = document.getElementById('reco-skin-guidance');
+    if (!el) return;
+    if (!tryOnState.skinProfile) {
+        el.style.display = 'none';
+        return;
+    }
+    const p = tryOnState.skinProfile;
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap">
+        <div>
+          <p style="font-weight:700;color:var(--text-primary);margin-bottom:6px">Skin-aware style guidance</p>
+          <p style="font-size:13px;color:var(--text-secondary)">Detected tone: ${p.tone} • undertone: ${p.undertone}</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;color:var(--text-muted)">Swatch</span>
+          <span style="display:inline-block;width:22px;height:22px;border-radius:50%;border:1px solid var(--border-color);background:${p.rgb}"></span>
+        </div>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:10px"><strong style="color:var(--text-primary)">Recommended colors:</strong> ${p.colors.join(', ')}</p>
+      <p style="font-size:13px;color:var(--text-secondary);margin-top:6px"><strong style="color:var(--text-primary)">Recommended patterns:</strong> ${p.patterns.join(', ')}</p>
+    `;
 }
 
 /** Draw skeleton lines and keypoint dots onto the canvas context. */
@@ -831,6 +985,7 @@ function startCanvasLoop() {
             }
             if (!kp) kp = simulatePoseKeypoints(canvas.width, canvas.height);
             tryOnState.poseKeypoints = kp;
+            updateSkinProfileFromFrame(ctx, kp, canvas);
             if (tryOnState.showSkeleton) drawSkeleton(ctx, kp);
             if (
                 tryOnState.selectedGarment
@@ -904,6 +1059,40 @@ async function runPoseDetection() {
         updatePoseOverlay();
         startCanvasLoop();
     }
+}
+
+function generateTryOnImage() {
+    const canvas = document.getElementById(
+        tryOnState.mode === 'webcam' ? 'pose-canvas-webcam' : 'pose-canvas'
+    );
+    const card = document.getElementById('generated-tryon-card');
+    if (!canvas || !card) return;
+    if (!tryOnState.poseDetected || !tryOnState.selectedGarment) {
+        card.style.display = 'block';
+        card.innerHTML = `
+          <div class="fit-score-header">
+            <div class="fit-score-label">🧠 AI Try-On Image</div>
+          </div>
+          <p style="color:var(--text-secondary);font-size:13px">Detect pose and select a garment first, then generate.</p>
+        `;
+        return;
+    }
+
+    const dataUrl = canvas.toDataURL('image/png');
+    tryOnState.generatedTryOnImage = dataUrl;
+    card.style.display = 'block';
+    card.innerHTML = `
+      <div class="fit-score-header">
+        <div class="fit-score-label">🧠 AI Try-On Image</div>
+        <span class="fit-badge fit-good">Generated</span>
+      </div>
+      <img src="${dataUrl}" alt="Generated try-on output" style="width:100%;border-radius:14px;border:1px solid var(--border-color);margin-top:8px">
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
+        <a class="btn btn-outline" href="${dataUrl}" download="virtual-tryon.png" style="text-decoration:none">⬇ Download</a>
+        <button class="btn btn-glow" onclick="showPage('dashboard')">Save To Wardrobe</button>
+      </div>
+      <p style="font-size:12px;color:var(--text-muted);margin-top:10px">AI generated preview from your input and selected garment overlay.</p>
+    `;
 }
 
 function getPoseUiElements() {
@@ -1024,7 +1213,7 @@ function renderGarmentPanel(allGarments, activeCategory) {
               <p class="garment-item__name">${g.name}</p>
               <div style="display:flex;justify-content:space-between;align-items:center">
                 <p class="garment-item__brand">${g.brand}</p>
-                <p class="garment-item__price">$${g.price}</p>
+                <p class="garment-item__price">${formatINR(g.price)}</p>
               </div>
             </div>
           </div>`;
@@ -1104,7 +1293,7 @@ function updateFitScoreCard() {
     </div>
     <p style="font-size:13px;color:var(--text-secondary);line-height:1.6">${desc}</p>
     <button class="btn btn-glow" style="width:100%;margin-top:16px;justify-content:center;border-radius:12px">
-      🛒 Add to Cart — $${g.price}
+      🛒 Add to Cart — ${formatINR(g.price)}
     </button>`;
 }
 
@@ -1147,6 +1336,8 @@ function startWebcam() {
                 tryOnState.poseDetecting = false;
                 tryOnState.poseKeypoints = null;
                 tryOnState.latestMeasurements = null;
+                tryOnState.skinProfile = null;
+                tryOnState.fullBodyVisible = false;
                 if (placeholder) placeholder.style.display = 'none';
                 if (webcamCanvas) webcamCanvas.style.display = 'block';
                 if (webcamDetected) webcamDetected.style.display = 'none';
@@ -1154,6 +1345,7 @@ function startWebcam() {
                 startCanvasLoop();
                 updatePoseOverlay();
                 updateMeasurementsUi();
+                updateSkinAnalysisUi();
             };
         })
         .catch(() => {
@@ -1221,11 +1413,13 @@ function resetRecommendationsView() {
     const resultsEl = document.getElementById('outfit-results');
     const countEl = document.getElementById('results-count');
     const btn = document.getElementById('generate-btn');
+    const guidance = document.getElementById('reco-skin-guidance');
     if (emptyEl) emptyEl.style.display = 'flex';
     if (resultsWrap) resultsWrap.style.display = 'none';
     if (resultsEl) resultsEl.innerHTML = '';
     if (countEl) countEl.textContent = '';
     if (btn) btn.innerHTML = '<span>✨</span> Generate My Outfits';
+    if (guidance) guidance.style.display = 'none';
     recoState.generated = false;
 }
 
@@ -1330,6 +1524,13 @@ function renderOutfitResults(outfits) {
     if (emptyEl) emptyEl.style.display = 'none';
     if (resultsWrap) resultsWrap.style.display = 'block';
     document.getElementById('results-count').textContent = `${outfits.length} outfits generated`;
+    renderSkinGuidanceForReco();
+    const skinTags = tryOnState.skinProfile
+        ? [...tryOnState.skinProfile.colors.slice(0, 2), ...tryOnState.skinProfile.patterns.slice(0, 2)].map((x) => `#${x.replace(/\s+/g, '')}`)
+        : [];
+    const bodyHint = tryOnState.fullBodyVisible
+        ? 'Full body visible: fit mapping is more reliable.'
+        : 'Tip: show full body in Try-On for better fit-accurate recommendations.';
 
     resultsEl.innerHTML = outfits.map((outfit, i) => `
     <div class="outfit-result-card" style="animation-delay:${i * 0.1}s">
@@ -1349,17 +1550,19 @@ function renderOutfitResults(outfits) {
             ${outfit.fitScore}% Match
           </div>
         </div>
+        <p style="font-size:12px;color:var(--text-muted);margin:2px 0 10px">${bodyHint}</p>
         ${outfit.items.map((item, j) => `
           <div class="outfit-item-row" ${j === outfit.items.length - 1 ? 'style="border-bottom:none"' : ''}>
             <div>
               <p class="outfit-item-name">${item.name}</p>
               <p class="outfit-item-brand">${item.brand}</p>
             </div>
-            <span class="outfit-item-price">$${item.price}</span>
+            <span class="outfit-item-price">${formatINR(item.price)}</span>
           </div>
         `).join('')}
         <div class="outfit-tags">
           ${outfit.tags.map((tag) => `<span class="outfit-tag">${tag}</span>`).join('')}
+          ${skinTags.map((tag) => `<span class="outfit-tag">${tag}</span>`).join('')}
         </div>
         <div class="outfit-actions">
           <button class="btn btn-glow" style="flex:1;justify-content:center;border-radius:12px;font-size:13px">
@@ -1669,7 +1872,7 @@ function renderSavedOutfitCard(outfit, wardrobeId) {
           <span class="saved-outfit-name">${outfit.name}</span>
           <span class="saved-outfit-style">${outfit.style}</span>
         </div>
-        <p class="saved-outfit-total">$${total} total</p>
+        <p class="saved-outfit-total">${formatINR(total)} total</p>
         <div class="saved-outfit-actions">
           <button class="btn btn-outline" style="flex:1;justify-content:center;border-radius:10px;font-size:12px;padding:9px">
             🔗 Share
