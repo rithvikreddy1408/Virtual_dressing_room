@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Smart Virtual Dressing Room — A fresh AI styling app for virtual try-on, outfit generation, and trend discovery.">
+  <title>Smart Dressing Room — AI Fashion Tech</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- Chart.js CDN (replaces Recharts from the Next.js version) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       NAVBAR — fixed glassmorph bar with logo, nav links, dark mode, hamburger
+  ═══════════════════════════════════════════════════════════════════════════ -->
+  <nav class="navbar" role="navigation" aria-label="Main navigation">
+
+    <!-- Logo -->
+    <a href="#" class="navbar__logo" onclick="showPage('home')">
+      <div class="navbar__logo-icon">✨</div>
+      <span class="navbar__logo-text">
+        <span class="gradient-text">Smart</span> Dressing
+      </span>
+    </a>
+
+    <!-- Desktop nav links -->
+    <div class="navbar__links" id="desktop-nav">
+      <button class="navbar__link" data-page="home">Home</button>
+      <button class="navbar__link" data-page="try-on">Try-On</button>
+      <button class="navbar__link" data-page="recommendations">Recommendations</button>
+      <button class="navbar__link" data-page="trends">Trends</button>
+      <button class="navbar__link" data-page="dashboard">Dashboard</button>
+    </div>
+
+    <!-- Right action buttons -->
+    <div class="navbar__actions">
+      <button class="navbar__icon-btn" id="dark-mode-toggle" aria-label="Toggle dark mode">🌙</button>
+      <button class="navbar__wardrobe-btn" onclick="showPage('dashboard')">🛍 Wardrobe</button>
+      <button class="navbar__hamburger" id="hamburger-btn" aria-label="Toggle menu">☰</button>
+    </div>
+
+    <!-- Mobile dropdown menu -->
+    <div class="navbar__mobile-menu" id="mobile-menu">
+      <button class="navbar__mobile-link" data-page="home">🏠 Home</button>
+      <button class="navbar__mobile-link" data-page="try-on">📸 Try-On</button>
+      <button class="navbar__mobile-link" data-page="recommendations">✨ Recommendations</button>
+      <button class="navbar__mobile-link" data-page="trends">📈 Trends</button>
+      <button class="navbar__mobile-link" data-page="dashboard">🗂️ Dashboard</button>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       PAGE CONTENT — All sections live here; only one is visible at a time
+  ═══════════════════════════════════════════════════════════════════════════ -->
+  <div class="page-content">
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         HOME PAGE
+    ────────────────────────────────────────────────────────────────────────── -->
+    <div id="page-home" class="page-section">
+
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero__orb hero__orb--1"></div>
+        <div class="hero__orb hero__orb--2"></div>
+        <div class="hero__orb hero__orb--3"></div>
+        <div class="grid-pattern" style="position:absolute;inset:0;pointer-events:none"></div>
+
+        <div class="hero__content">
+          <div class="hero__badge">✨ AI-POWERED FASHION TECH</div>
+
+          <h1 class="hero__title">
+            Your Smart
+            <span class="gradient-text">Virtual</span><br>
+            Dressing Room
+          </h1>
+
+          <p class="hero__subtitle">
+            Try on clothes virtually using AI pose detection, get personalized outfit ideas,
+            and explore fresh style inspiration from our new launch collection.
+          </p>
+
+          <div class="hero__ctas">
+            <button class="btn btn-glow" onclick="showPage('try-on')" id="hero-cta-tryon" style="padding:16px 36px;font-size:16px">
+              📸 Try Virtual Dressing
+            </button>
+            <button class="btn btn-outline" onclick="showPage('recommendations')" id="hero-cta-reco" style="padding:16px 36px;font-size:16px">
+              Get Recommendations ›
+            </button>
+          </div>
+
+          <!-- Stats strip -->
+          <div class="hero__stats" id="hero-stats"></div>
+        </div>
+
+        <!-- Floating fashion item thumbnails (hidden on mobile) -->
+        <div class="hero__floating-items">
+          <div class="hero__floating-item animate-float" style="animation-delay:0s">
+            <img src="https://images.unsplash.com/photo-1580657018950-c7f7d6a6d990?w=200&h=240&fit=crop" alt="Fashion item">
+          </div>
+          <div class="hero__floating-item animate-float" style="animation-delay:1.5s">
+            <img src="https://images.unsplash.com/photo-1502716119720-b23a93e5fe1b?w=200&h=240&fit=crop" alt="Fashion item">
+          </div>
+          <div class="hero__floating-item animate-float" style="animation-delay:3s">
+            <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=240&fit=crop" alt="Fashion item">
+          </div>
+        </div>
+      </section>
+
+      <!-- How It Works -->
+      <section class="section bg-secondary">
+        <div class="container">
+          <div class="section-header">
+            <div class="badge" style="background:rgba(201,169,110,0.12);color:#c9a96e;margin-bottom:16px">HOW IT WORKS</div>
+            <h2 class="section-title">
+              Three Steps to Your
+              <span class="gradient-text"> Perfect Look</span>
+            </h2>
+          </div>
+          <div class="steps-grid" id="how-it-works-grid"></div>
+        </div>
+      </section>
+
+      <!-- Trending Carousel -->
+      <section class="section bg-primary" style="padding: 100px 0">
+        <div class="container">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:48px;flex-wrap:wrap;gap:16px">
+            <div>
+              <div class="badge" style="background:rgba(176,125,107,0.15);color:#c9a96e;margin-bottom:12px">🔥 TRENDING NOW</div>
+              <h2 style="font-family:'Playfair Display',serif;font-size:clamp(28px,4vw,42px);font-weight:700;color:var(--text-primary)">
+                What's Hot This Season
+              </h2>
+            </div>
+            <button class="btn btn-outline" onclick="showPage('trends')">View All Trends ›</button>
+          </div>
+        </div>
+        <div class="carousel-scroll" id="trending-carousel"></div>
+      </section>
+
+      <!-- Features Grid -->
+      <section class="section bg-secondary">
+        <div class="container">
+          <div class="section-header">
+            <div class="badge" style="background:rgba(138,158,140,0.15);color:#8a9e8c;margin-bottom:16px">FEATURES</div>
+            <h2 class="section-title">
+              Everything You Need to
+              <span class="gradient-text"> Dress Smart</span>
+            </h2>
+          </div>
+          <div class="features-grid" id="features-grid"></div>
+        </div>
+      </section>
+
+      <!-- CTA Banner -->
+      <section class="section bg-primary">
+        <div class="container" style="max-width:700px">
+          <div class="cta-banner">
+            <h2 style="font-family:'Playfair Display',serif;font-size:clamp(28px,4vw,40px);font-weight:700;color:var(--text-primary);margin-bottom:16px">
+              Ready to Transform Your <span class="gradient-text">Wardrobe?</span>
+            </h2>
+            <p style="color:var(--text-secondary);font-size:16px;line-height:1.7;margin-bottom:36px">
+              Be one of the first users shaping this new AI styling experience from day one.
+            </p>
+            <button class="btn btn-glow" onclick="showPage('try-on')" style="padding:18px 48px;font-size:16px;font-weight:700">
+              📸 Start Your Virtual Try-On
+            </button>
+          </div>
+        </div>
+      </section>
+    </div><!-- /page-home -->
+
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         TRY-ON PAGE
+    ────────────────────────────────────────────────────────────────────────── -->
+    <div id="page-try-on" class="page-section">
+      <div style="background:var(--bg-primary);min-height:100vh;padding:32px 24px">
+
+        <!-- Page header -->
+        <div class="page-header container" style="max-width:1300px">
+          <div class="badge" style="background:rgba(201,169,110,0.12);color:#c9a96e">🎯 AI-POWERED TRY-ON</div>
+          <h1 class="page-title" style="margin-top:12px">Virtual Dressing Room</h1>
+          <p class="page-desc">Upload your photo, detect your pose, and try on any garment instantly.</p>
+        </div>
+
+        <div class="tryon-grid container" style="max-width:1300px">
+
+          <!-- Left: canvas area -->
+          <div>
+            <!-- Mode tabs -->
+            <div class="mode-tabs">
+              <button class="mode-tab active" data-mode="upload">⬆ Upload Photo</button>
+              <button class="mode-tab"        data-mode="webcam">📸 Use Webcam</button>
+            </div>
+
+            <!-- Upload area -->
+            <div id="upload-area">
+              <!-- Drop zone (shown before image is uploaded) -->
+              <label class="upload-drop" id="upload-drop" for="photo-upload-input">
+                <div class="upload-drop__icon">⬆</div>
+                <p style="font-weight:600;color:var(--text-primary);font-size:18px;margin-bottom:8px">Drop your photo here</p>
+                <p style="color:var(--text-secondary);font-size:14px">or click to browse — JPG, PNG, WebP</p>
+                <p style="color:var(--text-muted);font-size:12px;margin-top:8px">Best results with a clear, front-facing photo</p>
+                <input type="file" id="photo-upload-input" accept="image/*">
+              </label>
+
+              <!-- Canvas (shown after image is uploaded) -->
+              <div id="canvas-wrap" class="pose-canvas-wrap" style="display:none">
+                <!-- Hidden img element used as canvas source -->
+                <img id="hidden-img" alt="" style="display:none">
+
+                <canvas id="pose-canvas" class="pose-canvas" width="640" height="480"></canvas>
+
+                <!-- Overlay with detect button OR spinner -->
+                <div class="pose-overlay" id="pose-overlay">
+                  <button class="btn btn-glow" onclick="runPoseDetection()" style="font-size:15px;padding:16px 36px">
+                    ✨ Detect My Body Pose
+                  </button>
+                </div>
+
+                <!-- Detected badge -->
+                <div class="pose-detected-badge" id="pose-detected-badge" style="display:none">
+                  ✓ Pose Detected — Select a Garment
+                </div>
+
+                <!-- Change photo button -->
+                <button
+                  onclick="document.getElementById('photo-upload-input').value='';tryOnState.uploadedImageUrl=null;tryOnState.poseDetected=false;renderTryOnCanvas();"
+                  style="position:absolute;top:12px;right:12px;padding:8px 16px;border-radius:100px;border:none;background:rgba(0,0,0,0.6);color:white;font-size:13px;cursor:pointer">
+                  ✕ Change Photo
+                </button>
+              </div>
+
+              <!-- Keep hidden-img src updated when image is uploaded -->
+              <script>
+                document.getElementById('photo-upload-input').addEventListener('change', function(e) {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  const url = URL.createObjectURL(file);
+                  const img = document.getElementById('hidden-img');
+                  img.src = url;
+                  tryOnState.uploadedImageUrl = url;
+                  tryOnState.poseDetected = false;
+                  tryOnState.poseDetecting = false;
+                  renderTryOnCanvas();
+                  startCanvasLoop();
+                  updatePoseOverlay();
+                });
+              </script>
+            </div>
+
+            <!-- Webcam area -->
+            <div id="webcam-area" style="display:none">
+              <div class="webcam-placeholder" id="webcam-placeholder">
+                <div>
+                  <div style="font-size:48px;margin-bottom:12px;opacity:0.5">📷</div>
+                  <p>Initializing camera...</p>
+                </div>
+              </div>
+              <div id="canvas-wrap-webcam" class="pose-canvas-wrap" style="margin-top:12px">
+                <canvas id="pose-canvas" class="pose-canvas" width="640" height="480" style="display:none"></canvas>
+              </div>
+            </div>
+
+            <!-- Control buttons row -->
+            <div class="controls-row" style="margin-top:12px">
+              <button class="control-btn" id="skeleton-toggle">🦴 Hide Skeleton</button>
+              <button class="control-btn">🔗 Share Look</button>
+              <button class="control-btn" id="save-look-btn">🤍 Save Look</button>
+            </div>
+
+            <!-- Fit Score card (shown when garment is selected) -->
+            <div id="fit-score-card" class="fit-score-card" style="display:none"></div>
+          </div>
+
+          <!-- Right: Garment Panel sidebar -->
+          <div class="garment-panel" id="garment-panel">
+            <h3 class="garment-panel__title">👗 Choose Garment</h3>
+            <div class="garment-tabs" id="garment-tabs"></div>
+            <div class="garment-grid" id="garment-grid">
+              <div class="empty-state" style="grid-column:1/-1">
+                <div class="empty-state__icon">⌛</div>
+                <p class="empty-state__title">Loading garments...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /page-try-on -->
+
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         RECOMMENDATIONS PAGE
+    ────────────────────────────────────────────────────────────────────────── -->
+    <div id="page-recommendations" class="page-section">
+      <div style="background:var(--bg-primary);min-height:100vh;padding:32px 24px">
+        <div class="container" style="max-width:1100px">
+
+          <!-- Page header -->
+          <div class="page-header">
+            <div class="badge" style="background:rgba(176,125,107,0.15);color:#c9a96e">✨ AI RECOMMENDATIONS</div>
+            <h1 class="page-title" style="margin-top:12px">Your Personal Stylist</h1>
+            <p class="page-desc">Tell us about your body type, occasion, and style preferences, then generate a fresh set of looks anytime.</p>
+          </div>
+
+          <!-- Selectors grid -->
+          <div class="reco-selectors">
+
+            <!-- Body Type selector -->
+            <div class="card" style="padding:28px">
+              <h3 style="font-weight:700;color:var(--text-primary);margin-bottom:20px;font-size:16px">👤 Select Body Type</h3>
+              <div style="display:flex;flex-direction:column;gap:10px" id="body-type-list">
+                <p style="color:var(--text-muted);font-size:14px">Loading...</p>
+              </div>
+            </div>
+
+            <!-- Occasion + Style Preferences (stacked) -->
+            <div style="display:flex;flex-direction:column;gap:24px">
+
+              <!-- Occasion -->
+              <div class="card" style="padding:28px">
+                <h3 style="font-weight:700;color:var(--text-primary);margin-bottom:16px;font-size:16px">📅 Select Occasion</h3>
+                <div class="occasion-grid" id="occasion-grid">
+                  <p style="color:var(--text-muted);font-size:14px">Loading...</p>
+                </div>
+              </div>
+
+              <!-- Style Preferences -->
+              <div class="card" style="padding:28px">
+                <h3 style="font-weight:700;color:var(--text-primary);margin-bottom:16px;font-size:16px">🎨 Style Preferences</h3>
+                <div class="style-chips" id="style-chips">
+                  <p style="color:var(--text-muted);font-size:14px">Loading...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Generate button -->
+          <div style="text-align:center;margin-bottom:48px">
+            <button class="btn btn-glow" id="generate-btn" onclick="generateOutfits()" style="padding:18px 56px;font-size:16px;font-weight:700">
+              ✨ Generate My Outfits
+            </button>
+            <p style="color:var(--text-muted);font-size:13px;margin-top:12px">
+              AI analyzes your preferences and generates 6 curated outfit combinations
+            </p>
+          </div>
+
+          <!-- Empty state (before generation) -->
+          <div class="empty-state" id="reco-empty">
+            <div class="empty-state__icon">✨</div>
+            <p class="empty-state__title">Select your preferences above and click Generate</p>
+            <p class="empty-state__desc">AI will create 6 outfit combinations tailored just for you</p>
+          </div>
+
+          <!-- Results -->
+          <div id="outfit-results-wrap" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+              <h2 style="font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:var(--text-primary)">
+                Your Curated Looks ✨
+              </h2>
+              <span style="color:var(--text-muted);font-size:14px" id="results-count"></span>
+            </div>
+            <div class="outfit-results-grid" id="outfit-results"></div>
+          </div>
+
+        </div>
+      </div>
+    </div><!-- /page-recommendations -->
+
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         TRENDS PAGE
+    ────────────────────────────────────────────────────────────────────────── -->
+    <div id="page-trends" class="page-section">
+      <div style="background:var(--bg-primary);min-height:100vh;padding:32px 24px">
+        <div class="container" style="max-width:1200px">
+
+          <!-- Page header -->
+          <div class="page-header">
+            <div class="badge" style="background:rgba(245,158,11,0.15);color:#fbbf24">📈 TREND INSIGHTS</div>
+            <h1 class="page-title" style="margin-top:12px">What's Trending Right Now</h1>
+            <p class="page-desc">Live fashion insights powered by lightweight AI analysis and curated trend signals.</p>
+          </div>
+
+          <!-- Trending items grid -->
+          <section style="margin-bottom:64px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px">
+              <h2 style="font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:var(--text-primary)">Top Trending Pieces</h2>
+              <div style="display:flex;align-items:center;gap:6px;padding:6px 16px;border-radius:100px;background:rgba(176,125,107,0.1);border:1px solid rgba(176,125,107,0.2)">
+                🔥 <span style="color:#b07d6b;font-size:13px;font-weight:600">Current Season</span>
+              </div>
+            </div>
+            <div class="trend-items-grid" id="trend-items-grid">
+              <p style="color:var(--text-muted)">Loading trends...</p>
+            </div>
+          </section>
+
+          <!-- Analytics charts -->
+          <section style="margin-bottom:64px">
+            <h2 style="font-family:'Playfair Display',serif;font-size:28px;font-weight:700;color:var(--text-primary);margin-bottom:8px">
+              Trend Analytics
+            </h2>
+            <p style="color:var(--text-secondary);margin-bottom:32px">Data-driven fashion intelligence</p>
+
+            <div class="charts-grid">
+              <!-- Line chart: full width -->
+              <div class="chart-card chart-card--full">
+                <h3 class="chart-card__title">📈 Style Trend Momentum (Last 7 Months)</h3>
+                <canvas id="line-chart"></canvas>
+              </div>
+
+              <!-- Pie chart -->
+              <div class="chart-card">
+                <h3 class="chart-card__title">Style Category Distribution</h3>
+                <canvas id="pie-chart" style="max-height:240px"></canvas>
+              </div>
+
+              <!-- Bar chart -->
+              <div class="chart-card">
+                <h3 class="chart-card__title">Seasonal Popularity by Category</h3>
+                <canvas id="bar-chart" style="max-height:240px"></canvas>
+              </div>
+            </div>
+          </section>
+
+          <!-- Style of the Week + Hashtags -->
+          <section class="trends-bottom" style="margin-bottom:40px">
+            <div id="style-of-week">
+              <p style="color:var(--text-muted)">Loading...</p>
+            </div>
+            <div class="hashtags-card">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
+                <span style="font-size:20px;color:#c9a96e">#</span>
+                <h3 style="font-weight:700;color:var(--text-primary);font-size:16px">Trending Hashtags</h3>
+              </div>
+              <div class="hashtags-wrap" id="hashtags-wrap">
+                <p style="color:var(--text-muted)">Loading...</p>
+              </div>
+              <div class="trend-tip-box" id="trend-tip-box"></div>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </div><!-- /page-trends -->
+
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         DASHBOARD PAGE
+    ────────────────────────────────────────────────────────────────────────── -->
+    <div id="page-dashboard" class="page-section">
+      <div style="background:var(--bg-primary);min-height:100vh;padding:32px 24px">
+        <div class="container" style="max-width:1100px">
+
+          <!-- Profile header -->
+          <div class="profile-card">
+            <div class="profile-card__glow"></div>
+            <div class="profile-card__inner">
+              <div class="profile-avatar">👗</div>
+              <div class="profile-info">
+                <h1 class="profile-name">My Wardrobe</h1>
+                <p class="profile-sub">Your personal AI-powered fashion space</p>
+                <div class="profile-stats">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="font-size:16px;color:#c9a96e">🛍</span>
+                      <span class="profile-stat-value" id="stat-saved">0</span>
+                    </div>
+                    <p class="profile-stat-label">Outfits Saved</p>
+                  </div>
+                  <div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="font-size:16px;color:#b07d6b">📷</span>
+                      <span class="profile-stat-value" id="stat-tryons">0</span>
+                    </div>
+                    <p class="profile-stat-label">Try-Ons</p>
+                  </div>
+                  <div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="font-size:16px;color:#d4956a">⭐</span>
+                      <span class="profile-stat-value" id="stat-favorites">0</span>
+                    </div>
+                    <p class="profile-stat-label">Favorites</p>
+                  </div>
+                </div>
+              </div>
+              <button class="btn btn-glow" onclick="showPage('try-on')" style="flex-shrink:0">📷 New Try-On</button>
+            </div>
+          </div>
+
+          <!-- Tabs -->
+          <div class="dashboard-tabs" id="dashboard-tabs"></div>
+
+          <!-- Tab content -->
+          <div id="dashboard-tab-content"></div>
+
+        </div>
+      </div>
+    </div><!-- /page-dashboard -->
+
+  </div><!-- /page-content -->
+
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       FOOTER
+  ═══════════════════════════════════════════════════════════════════════════ -->
+  <footer class="footer">
+    <div class="footer__grid">
+      <!-- Brand -->
+      <div>
+        <div class="footer__brand-logo">
+          <div class="footer__brand-icon">✨</div>
+          <span class="footer__brand-name">Smart Dressing</span>
+        </div>
+        <p class="footer__brand-desc">
+          A fresh AI-powered fashion experience. Try on clothes, generate outfit ideas,
+          and discover trends directly in your browser.
+        </p>
+        <div class="footer__socials">
+          <button class="footer__social-btn" title="Instagram">📷</button>
+          <button class="footer__social-btn" title="Twitter">🐦</button>
+          <button class="footer__social-btn" title="Facebook">👥</button>
+          <button class="footer__social-btn" title="YouTube">▶️</button>
+        </div>
+      </div>
+
+      <!-- Features column -->
+      <div>
+        <h4 class="footer__col-title">Features</h4>
+        <p class="footer__col-item" onclick="showPage('try-on')">Virtual Try-On</p>
+        <p class="footer__col-item" onclick="showPage('recommendations')">AI Recommendations</p>
+        <p class="footer__col-item" onclick="showPage('try-on')">Fit Prediction</p>
+        <p class="footer__col-item" onclick="showPage('trends')">Trend Insights</p>
+        <p class="footer__col-item">Body Analysis</p>
+      </div>
+
+      <!-- Company column -->
+      <div>
+        <h4 class="footer__col-title">Company</h4>
+        <p class="footer__col-item">About Us</p>
+        <p class="footer__col-item">Blog</p>
+        <p class="footer__col-item">Careers</p>
+        <p class="footer__col-item">Press Kit</p>
+        <p class="footer__col-item">Contact</p>
+      </div>
+
+      <!-- Legal column -->
+      <div>
+        <h4 class="footer__col-title">Legal</h4>
+        <p class="footer__col-item">Privacy Policy</p>
+        <p class="footer__col-item">Terms of Service</p>
+        <p class="footer__col-item">Cookie Policy</p>
+        <p class="footer__col-item">Accessibility</p>
+        <p class="footer__col-item">GDPR</p>
+      </div>
+    </div>
+
+    <div class="footer__bottom">
+      <p class="footer__copyright">© 2025 Smart Virtual Dressing Room. All rights reserved.</p>
+      <div class="footer__status">
+        <span class="footer__status-dot"></span>
+        <span class="footer__status-text">AI systems operational</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       SCRIPTS — loaded in order: api → ui → app
+  ═══════════════════════════════════════════════════════════════════════════ -->
+  <script src="js/api.js" defer></script>
+  <script src="js/ui.js"  defer></script>
+  <script src="js/app.js" defer></script>
+
+</body>
+</html>
