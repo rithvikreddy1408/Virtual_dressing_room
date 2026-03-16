@@ -289,9 +289,11 @@ function renderTryOnCanvas() {
     const uploadArea = document.getElementById('upload-area');
     const canvasWrap = document.getElementById('canvas-wrap');
     const dropZone = document.getElementById('upload-drop');
+    const webcamCanvas = document.getElementById('pose-canvas-webcam');
     if (!uploadArea || !canvasWrap) return;
 
     if (tryOnState.mode === 'upload') {
+        if (webcamCanvas) webcamCanvas.style.display = 'none';
         if (tryOnState.uploadedImageUrl) {
             if (dropZone) dropZone.style.display = 'none';
             canvasWrap.style.display = 'block';
@@ -301,6 +303,9 @@ function renderTryOnCanvas() {
             canvasWrap.style.display = 'none';
             stopCanvasLoop();
         }
+    } else if (tryOnState.mode === 'webcam') {
+        if (webcamCanvas) webcamCanvas.style.display = 'block';
+        stopCanvasLoop();
     }
 }
 
@@ -394,7 +399,9 @@ function drawGarmentOverlay(ctx, kp, garmentImg, garmentType, cw, ch) {
 function startCanvasLoop() {
     stopCanvasLoop();
 
-    const canvas = document.getElementById('pose-canvas');
+    const canvas = document.getElementById(
+        tryOnState.mode === 'webcam' ? 'pose-canvas-webcam' : 'pose-canvas'
+    );
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
 
@@ -594,7 +601,19 @@ function updateFitScoreCard() {
 
 function startWebcam() {
     const placeholder = document.getElementById('webcam-placeholder');
+    const webcamCanvas = document.getElementById('pose-canvas-webcam');
     if (placeholder) placeholder.style.display = 'flex';
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (placeholder) {
+            placeholder.innerHTML = `
+        <div style="text-align:center">
+          <div style="font-size:48px;margin-bottom:12px;opacity:0.5">📷</div>
+          <p style="color:var(--text-secondary)">Webcam is not supported in this browser</p>
+        </div>`;
+        }
+        return;
+    }
 
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
         .then((stream) => {
@@ -604,15 +623,20 @@ function startWebcam() {
             video.autoplay = true;
             video.muted = true;
             video.playsInline = true;
-            video.onloadeddata = () => {
+            video.onloadedmetadata = async () => {
+                try {
+                    await video.play();
+                } catch (err) {
+                    console.warn('Unable to autoplay webcam video:', err);
+                }
                 tryOnState.videoEl = video;
-                if (placeholder) placeholder.innerHTML = `
-          <p style="color:var(--text-secondary)">📷 Camera active — canvas overlay enabled</p>`;
+                if (placeholder) placeholder.style.display = 'none';
+                if (webcamCanvas) webcamCanvas.style.display = 'block';
                 startCanvasLoop();
-                document.getElementById('canvas-wrap').style.display = 'block';
             };
         })
         .catch(() => {
+            if (webcamCanvas) webcamCanvas.style.display = 'none';
             if (placeholder) placeholder.innerHTML = `
         <div style="text-align:center">
           <div style="font-size:48px;margin-bottom:12px;opacity:0.5">📷</div>
@@ -626,6 +650,17 @@ function stopWebcam() {
         tryOnState.mediaStream.getTracks().forEach((t) => t.stop());
         tryOnState.mediaStream = null;
     }
+    const placeholder = document.getElementById('webcam-placeholder');
+    const webcamCanvas = document.getElementById('pose-canvas-webcam');
+    if (placeholder) {
+        placeholder.style.display = 'flex';
+        placeholder.innerHTML = `
+      <div>
+        <div style="font-size:48px;margin-bottom:12px;opacity:0.5">📷</div>
+        <p>Initializing camera...</p>
+      </div>`;
+    }
+    if (webcamCanvas) webcamCanvas.style.display = 'none';
     tryOnState.videoEl = null;
     stopCanvasLoop();
 }
