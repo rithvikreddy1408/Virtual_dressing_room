@@ -241,31 +241,79 @@
 
             <!-- Webcam area -->
             <div id="webcam-area" style="display:none">
+              <!-- Placeholder shown while camera is loading -->
               <div class="webcam-placeholder" id="webcam-placeholder">
                 <div>
                   <div style="font-size:48px;margin-bottom:12px;opacity:0.5">📷</div>
-                  <p>Initializing camera...</p>
+                  <p>Initializing camera…</p>
                 </div>
               </div>
-              <div id="canvas-wrap-webcam" class="pose-canvas-wrap" style="margin-top:12px">
-                <canvas id="pose-canvas-webcam" class="pose-canvas" width="640" height="480" style="display:none"></canvas>
-                <div class="pose-overlay" id="pose-overlay-webcam" style="display:none">
-                  <button class="btn btn-glow" onclick="runPoseDetection()" style="font-size:15px;padding:16px 36px">
-                    ✨ Try On Selected Outfit
+
+              <!-- Step 1: Live feed + Take Photo button -->
+              <div id="webcam-live-wrap" style="display:none;position:relative">
+                <!-- Live pose canvas -->
+                <div id="canvas-wrap-webcam" class="pose-canvas-wrap" style="margin-top:0">
+                  <canvas id="pose-canvas-webcam" class="pose-canvas" width="640" height="480"></canvas>
+                  <div class="pose-overlay" id="pose-overlay-webcam" style="display:none">
+                    <button class="btn btn-glow" onclick="runPoseDetection()" style="font-size:15px;padding:16px 36px">
+                      ✨ Try On Selected Outfit
+                    </button>
+                  </div>
+                  <div class="pose-detected-badge" id="pose-detected-badge-webcam" style="display:none">
+                    ✓ Pose Detected — Select a Garment
+                  </div>
+                </div>
+
+                <!-- Big "Take Photo" button overlaid at bottom of live feed -->
+                <div style="display:flex;justify-content:center;margin-top:12px;gap:12px">
+                  <button id="take-photo-btn" onclick="takeWebcamSnapshot()"
+                    class="btn btn-glow"
+                    style="padding:14px 36px;font-size:16px;font-weight:800;letter-spacing:0.5px;
+                           background:radial-gradient(ellipse,rgba(201,169,110,0.25),transparent);
+                           border-color:rgba(201,169,110,0.6)">
+                    📸 Take Photo
                   </button>
                 </div>
-                <div class="pose-detected-badge" id="pose-detected-badge-webcam" style="display:none">
-                  ✓ Pose Detected — Select a Garment
+              </div>
+
+              <!-- Step 2: Frozen snapshot preview -->
+              <div id="webcam-snapshot-wrap" style="display:none">
+                <div style="position:relative;border-radius:14px;overflow:hidden;border:2px solid rgba(201,169,110,0.4)">
+                  <!-- Hidden canvas used for the snapshot -->
+                  <canvas id="webcam-snapshot-canvas" style="display:block;width:100%;border-radius:12px"></canvas>
+                  <div style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.6);
+                               color:#c9a96e;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px">
+                    📸 SNAPSHOT
+                  </div>
+                </div>
+                <!-- Retake / Generate buttons -->
+                <div style="display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;align-items:center">
+                  <button onclick="retakeWebcamSnapshot()" class="btn btn-outline"
+                    style="padding:10px 22px;font-size:14px">
+                    🔄 Retake
+                  </button>
+                  <button onclick="generateTryOnImage()" class="btn btn-glow"
+                    id="webcam-flux-btn"
+                    style="padding:12px 28px;font-size:14px;font-weight:700">
+                    🤖 Generate with Flux AI
+                  </button>
+                  <span style="font-size:12px;color:var(--text-muted)">
+                    Generates a photorealistic outfit image from this snapshot
+                  </span>
                 </div>
               </div>
             </div>
+
 
             <!-- Control buttons row -->
             <div class="controls-row" style="margin-top:12px">
               <button class="control-btn" id="skeleton-toggle">🦴 Hide Skeleton</button>
               <button class="control-btn">🔗 Share Look</button>
               <button class="control-btn" id="save-look-btn">🤍 Save Look</button>
-              <button class="control-btn" onclick="generateTryOnImage()">🧠 Generate AI Try-On</button>
+              <button class="control-btn btn-glow" onclick="generateTryOnImage()" id="flux-gen-btn"
+                style="background:linear-gradient(135deg,rgba(201,169,110,0.18),rgba(176,125,107,0.18));color:#c9a96e;border-color:rgba(201,169,110,0.35);font-weight:700">
+                🤖 Generate with Flux AI
+              </button>
               <label class="control-btn" style="gap:10px">
                 📏 Height
                 <input type="number" id="height-input" value="170" min="120" max="220" style="width:72px;border:none;background:transparent;color:var(--text-primary);font-weight:700;outline:none">
@@ -319,7 +367,7 @@
                   <input type="number" id="measure-height-input" value="170" min="120" max="220" style="width:72px;border:none;background:transparent;color:var(--text-primary);font-weight:700;outline:none">
                   <span style="font-size:12px;color:var(--text-muted)">cm</span>
                 </label>
-                <button class="btn btn-outline" onclick="refreshMeasurements()">Refresh</button>
+                <button class="btn btn-outline" onclick="requestNewMeasurements()">New Measurements</button>
                 <button class="btn btn-glow" onclick="showPage('try-on')">Open Try-On</button>
               </div>
             </div>

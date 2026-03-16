@@ -1,37 +1,45 @@
 // ─── Garment Catalog ─────────────────────────────────────────────────────────
+// gender: 'male' | 'female' | 'unisex'  — used to filter by detected gender
+// color: CSS swatch color — no external image URLs needed
 
 const GARMENTS = {
   shirts: [
-    { id: 's1', name: 'Classic White Oxford',   price: 89,  image: 'https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=300&h=400&fit=crop', sizes: ['XS','S','M','L','XL'], color: '#f5f5f5', brand: 'Elegance Co' },
-    { id: 's2', name: 'Navy Slim Fit Shirt',    price: 79,  image: 'https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=300&h=400&fit=crop', sizes: ['S','M','L','XL'], color: '#1e3a5f', brand: 'UrbanEdge' },
-    { id: 's3', name: 'Floral Print Blouse',    price: 65,  image: 'https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=300&h=400&fit=crop', sizes: ['XS','S','M','L'], color: '#e8d5c4', brand: 'Bloom' },
-    { id: 's4', name: 'Striped Linen Shirt',    price: 95,  image: 'https://images.unsplash.com/photo-1620012253295-c15cc3e65df4?w=300&h=400&fit=crop', sizes: ['S','M','L','XL','XXL'], color: '#d4e8f0', brand: 'Coastal' },
-    { id: 's5', name: 'Black Turtleneck',       price: 72,  image: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=300&h=400&fit=crop', sizes: ['XS','S','M','L'], color: '#1a1a1a', brand: 'Noir Studio' },
-    { id: 's6', name: 'Silk Satin Top',         price: 110, image: 'https://images.unsplash.com/photo-1583388132789-93f842ec698c?w=300&h=400&fit=crop', sizes: ['XS','S','M'], color: '#f4c6d4', brand: 'Luxe Line' },
+    { id: 's1', name: 'Classic White Oxford',    price: 89,  color: '#f5f5f5', brand: 'Elegance Co',    sizes: ['XS','S','M','L','XL'],    gender: 'male',   tags: ['formal','smart-casual'] },
+    { id: 's2', name: 'Navy Slim Fit Shirt',     price: 79,  color: '#1e3a5f', brand: 'UrbanEdge',      sizes: ['S','M','L','XL'],          gender: 'male',   tags: ['formal','business'] },
+    { id: 's3', name: 'Floral Print Blouse',     price: 65,  color: '#e8d5c4', brand: 'Bloom',          sizes: ['XS','S','M','L'],          gender: 'female', tags: ['casual','floral'] },
+    { id: 's4', name: 'Oversized Linen Shirt',   price: 95,  color: '#d4e8f0', brand: 'Coastal',        sizes: ['S','M','L','XL','XXL'],    gender: 'unisex', tags: ['casual','relaxed'] },
+    { id: 's5', name: 'Black Turtleneck',        price: 72,  color: '#1a1a1a', brand: 'Noir Studio',    sizes: ['XS','S','M','L'],          gender: 'unisex', tags: ['casual','minimal'] },
+    { id: 's6', name: 'Silk Satin Blouse',       price: 110, color: '#f4c6d4', brand: 'Luxe Line',      sizes: ['XS','S','M'],              gender: 'female', tags: ['party','elegant'] },
+    { id: 's7', name: 'Graphic Streetwear Tee',  price: 55,  color: '#2d2d2d', brand: 'StreetCo',       sizes: ['S','M','L','XL','XXL'],    gender: 'male',   tags: ['casual','streetwear'] },
+    { id: 's8', name: 'Boxy Crop Top',           price: 45,  color: '#f9a8d4', brand: 'Breezy',         sizes: ['XS','S','M'],              gender: 'female', tags: ['casual','trendy'] },
   ],
   jackets: [
-    { id: 'j1', name: 'Leather Biker Jacket',  price: 299, image: 'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=300&h=400&fit=crop', sizes: ['S','M','L','XL'], color: '#2a1a0a', brand: 'Rebel Road' },
-    { id: 'j2', name: 'Wool Blazer',           price: 245, image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&h=400&fit=crop', sizes: ['S','M','L','XL','XXL'], color: '#2c3e50', brand: 'Prestige' },
-    { id: 'j3', name: 'Denim Jacket',          price: 135, image: 'https://images.unsplash.com/photo-1544441893-675973e31985?w=300&h=400&fit=crop', sizes: ['XS','S','M','L','XL'], color: '#4a90d9', brand: 'Denim Days' },
-    { id: 'j4', name: 'Puffer Jacket',         price: 189, image: 'https://images.unsplash.com/photo-1539533018447-63fcce2678e3?w=300&h=400&fit=crop', sizes: ['S','M','L','XL'], color: '#2d5a27', brand: 'AlpineWear' },
-    { id: 'j5', name: 'Trench Coat',           price: 320, image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=300&h=400&fit=crop', sizes: ['XS','S','M','L','XL'], color: '#8B7355', brand: 'Heritage' },
-    { id: 'j6', name: 'Velvet Blazer',         price: 275, image: 'https://images.unsplash.com/photo-1580657018950-c7f7d6a6d990?w=300&h=400&fit=crop', sizes: ['S','M','L'], color: '#6B21A8', brand: 'Royal Stitch' },
+    { id: 'j1', name: 'Leather Biker Jacket',    price: 299, color: '#2a1a0a', brand: 'Rebel Road',     sizes: ['S','M','L','XL'],          gender: 'male',   tags: ['streetwear','casual'] },
+    { id: 'j2', name: 'Tailored Wool Blazer',    price: 245, color: '#2c3e50', brand: 'Prestige',       sizes: ['S','M','L','XL','XXL'],    gender: 'male',   tags: ['formal','business'] },
+    { id: 'j3', name: 'Denim Jacket',            price: 135, color: '#4a90d9', brand: 'Denim Days',     sizes: ['XS','S','M','L','XL'],     gender: 'unisex', tags: ['casual','streetwear'] },
+    { id: 'j4', name: 'Puffer Jacket',           price: 189, color: '#2d5a27', brand: 'AlpineWear',     sizes: ['S','M','L','XL'],          gender: 'unisex', tags: ['casual','winter'] },
+    { id: 'j5', name: 'Belted Trench Coat',      price: 320, color: '#8B7355', brand: 'Heritage',       sizes: ['XS','S','M','L','XL'],     gender: 'female', tags: ['formal','elegant'] },
+    { id: 'j6', name: 'Velvet Blazer',           price: 275, color: '#6B21A8', brand: 'Royal Stitch',   sizes: ['S','M','L'],               gender: 'unisex', tags: ['party','elegant'] },
+    { id: 'j7', name: 'Bomber Jacket',           price: 165, color: '#556B2F', brand: 'AirForce',       sizes: ['S','M','L','XL'],          gender: 'male',   tags: ['casual','streetwear'] },
+    { id: 'j8', name: 'Cropped Moto Jacket',     price: 210, color: '#4a1a0a', brand: 'EdgeWear',       sizes: ['XS','S','M'],              gender: 'female', tags: ['streetwear','edgy'] },
   ],
   dresses: [
-    { id: 'd1', name: 'Floral Midi Dress',     price: 125, image: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=300&h=400&fit=crop', sizes: ['XS','S','M','L'], color: '#FF8FAB', brand: 'Garden Tale' },
-    { id: 'd2', name: 'LBD Cocktail Dress',    price: 195, image: 'https://images.unsplash.com/photo-1566479153369-bca2a1c6f0a0?w=300&h=400&fit=crop', sizes: ['XS','S','M','L','XL'], color: '#1a1a1a', brand: 'Noir Luxe' },
-    { id: 'd3', name: 'Bohemian Maxi Dress',   price: 145, image: 'https://images.unsplash.com/photo-1502716119720-b23a93e5fe1b?w=300&h=400&fit=crop', sizes: ['XS','S','M','L','XL'], color: '#DEB887', brand: 'Free Spirit' },
-    { id: 'd4', name: 'Red Evening Gown',      price: 350, image: 'https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=300&h=400&fit=crop', sizes: ['XS','S','M','L'], color: '#DC143C', brand: 'Glam Couture' },
-    { id: 'd5', name: 'Wrap Dress',            price: 89,  image: 'https://images.unsplash.com/photo-1583496661160-fb5218b5b0a6?w=300&h=400&fit=crop', sizes: ['XS','S','M','L','XL'], color: '#4A90A4', brand: 'WrapStyle' },
-    { id: 'd6', name: 'Mini Shirt Dress',      price: 99,  image: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=300&h=400&fit=crop', sizes: ['XS','S','M','L'], color: '#F5DEB3', brand: 'Casual Chic' },
+    { id: 'd1', name: 'Floral Midi Dress',       price: 125, color: '#FF8FAB', brand: 'Garden Tale',    sizes: ['XS','S','M','L'],          gender: 'female', tags: ['casual','floral'] },
+    { id: 'd2', name: 'LBD Cocktail Dress',      price: 195, color: '#1a1a1a', brand: 'Noir Luxe',      sizes: ['XS','S','M','L','XL'],     gender: 'female', tags: ['party','elegant'] },
+    { id: 'd3', name: 'Bohemian Maxi Dress',     price: 145, color: '#DEB887', brand: 'Free Spirit',    sizes: ['XS','S','M','L','XL'],     gender: 'female', tags: ['casual','boho'] },
+    { id: 'd4', name: 'Red Evening Gown',        price: 350, color: '#DC143C', brand: 'Glam Couture',   sizes: ['XS','S','M','L'],          gender: 'female', tags: ['formal','party'] },
+    { id: 'd5', name: 'Wrap Midi Dress',         price: 89,  color: '#4A90A4', brand: 'WrapStyle',      sizes: ['XS','S','M','L','XL'],     gender: 'female', tags: ['casual','smart-casual'] },
+    { id: 'd6', name: 'Mini Shirt Dress',        price: 99,  color: '#F5DEB3', brand: 'Casual Chic',    sizes: ['XS','S','M','L'],          gender: 'female', tags: ['casual','trendy'] },
   ],
   pants: [
-    { id: 'p1', name: 'High-Waist Skinny Jeans', price: 89,  image: 'https://images.unsplash.com/photo-1542574271-7f3b92e6c821?w=300&h=400&fit=crop', sizes: ['XS','S','M','L','XL'], color: '#1a237e', brand: 'Denim Lab' },
-    { id: 'p2', name: 'Wide-Leg Trousers',     price: 115, image: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=300&h=400&fit=crop', sizes: ['XS','S','M','L','XL'], color: '#708090', brand: 'Palazzo' },
-    { id: 'p3', name: 'Tailored Chinos',       price: 95,  image: 'https://images.unsplash.com/photo-1516257984-b1b4d707412e?w=300&h=400&fit=crop', sizes: ['S','M','L','XL','XXL'], color: '#D2B48C', brand: 'Office Edit' },
-    { id: 'p4', name: 'Leather Leggings',      price: 135, image: 'https://images.unsplash.com/photo-1506629082955-511b1aa562c8?w=300&h=400&fit=crop', sizes: ['XS','S','M','L'], color: '#2d1b0e', brand: 'Edge Style' },
-    { id: 'p5', name: 'Printed Palazzo Pants', price: 79,  image: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=300&h=400&fit=crop', sizes: ['XS','S','M','L','XL'], color: '#FF6B6B', brand: 'Breezy' },
-    { id: 'p6', name: 'Classic Black Slacks',  price: 110, image: 'https://images.unsplash.com/photo-1473966968600-fa801b869a1a?w=300&h=400&fit=crop', sizes: ['S','M','L','XL','XXL'], color: '#0d0d0d', brand: 'Boardroom' },
+    { id: 'p1', name: 'Slim Fit Dark Jeans',     price: 89,  color: '#1a237e', brand: 'Denim Lab',      sizes: ['XS','S','M','L','XL'],     gender: 'male',   tags: ['casual','smart-casual'] },
+    { id: 'p2', name: 'Wide-Leg Trousers',       price: 115, color: '#708090', brand: 'Palazzo',        sizes: ['XS','S','M','L','XL'],     gender: 'female', tags: ['formal','trendy'] },
+    { id: 'p3', name: 'Tailored Chinos',         price: 95,  color: '#D2B48C', brand: 'Office Edit',    sizes: ['S','M','L','XL','XXL'],    gender: 'male',   tags: ['formal','business'] },
+    { id: 'p4', name: 'Faux Leather Leggings',   price: 135, color: '#2d1b0e', brand: 'Edge Style',     sizes: ['XS','S','M','L'],          gender: 'female', tags: ['casual','edgy'] },
+    { id: 'p5', name: 'Barrel-Leg Jeans',        price: 99,  color: '#4a6fa5', brand: 'Breezy Denim',   sizes: ['XS','S','M','L','XL'],     gender: 'female', tags: ['casual','trendy'] },
+    { id: 'p6', name: 'Classic Black Slacks',    price: 110, color: '#0d0d0d', brand: 'Boardroom',      sizes: ['S','M','L','XL','XXL'],    gender: 'male',   tags: ['formal','business'] },
+    { id: 'p7', name: 'Cargo Utility Pants',     price: 85,  color: '#556B2F', brand: 'Street Utility', sizes: ['S','M','L','XL'],          gender: 'male',   tags: ['casual','streetwear'] },
+    { id: 'p8', name: 'High-Waist Flare Jeans',  price: 110, color: '#2e4a8a', brand: 'Retro Lab',      sizes: ['XS','S','M','L'],          gender: 'female', tags: ['casual','retro'] },
   ],
 };
 
@@ -77,22 +85,24 @@ const OUTFIT_COMBINATIONS = [
   { jacket: 'j3', top: 's2', bottom: 'p1', occasion: 'casual', bodyTypes: ['hourglass','rectangle','inverted'], fitScore: 88, style: 'Denim Duo' },
 ];
 
-// ─── Trend Data ───────────────────────────────────────────────────────────────
+// ─── Trend Data (2025 actual trending fashion) ───────────────────────────────
+// Based on Spring/Summer 2025 runway trends and global fashion search data
 
 const TRENDING_ITEMS = [
-  { id: 1,  rank: 1,  name: 'Oversized Blazer',    category: 'Jackets',    trend: '+42%', image: 'https://images.unsplash.com/photo-1580657018950-c7f7d6a6d990?w=300&h=350&fit=crop', tags: ['#OversizedFashion','#PowerDressing'], hot: true },
-  { id: 2,  rank: 2,  name: 'Wide-Leg Trousers',   category: 'Bottoms',    trend: '+38%', image: 'https://images.unsplash.com/photo-1539109136881-3be0616acf4b?w=300&h=350&fit=crop', tags: ['#WideLeg','#Y2KVibes'], hot: true },
-  { id: 3,  rank: 3,  name: 'Floral Midi Dress',   category: 'Dresses',    trend: '+35%', image: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=300&h=350&fit=crop', tags: ['#FloralFashion','#MidiMagic'], hot: true },
-  { id: 4,  rank: 4,  name: 'Leather Trench Coat', category: 'Outerwear',  trend: '+28%', image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=300&h=350&fit=crop', tags: ['#LeatherTrend','#CoatSeason'], hot: false },
-  { id: 5,  rank: 5,  name: 'Cut-Out Tops',        category: 'Tops',       trend: '+24%', image: 'https://images.unsplash.com/photo-1583388132789-93f842ec698c?w=300&h=350&fit=crop', tags: ['#CutOut','#BodyCon'], hot: false },
-  { id: 6,  rank: 6,  name: 'Cargo Pants',         category: 'Bottoms',    trend: '+22%', image: 'https://images.unsplash.com/photo-1516257984-b1b4d707412e?w=300&h=350&fit=crop', tags: ['#CargoStyle','#Utilitarian'], hot: false },
-  { id: 7,  rank: 7,  name: 'Biker Shorts',        category: 'Activewear', trend: '+19%', image: 'https://images.unsplash.com/photo-1506629082955-511b1aa562c8?w=300&h=350&fit=crop', tags: ['#Athleisure','#BikerShorts'], hot: false },
-  { id: 8,  rank: 8,  name: 'Puff Sleeve Blouse',  category: 'Tops',       trend: '+17%', image: 'https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=300&h=350&fit=crop', tags: ['#PuffSleeve','#VintageVibes'], hot: false },
-  { id: 9,  rank: 9,  name: 'Mini Skirts',         category: 'Bottoms',    trend: '+15%', image: 'https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?w=300&h=350&fit=crop', tags: ['#MiniSkirt','#Y2K'], hot: false },
-  { id: 10, rank: 10, name: 'Silk Slip Dress',      category: 'Dresses',    trend: '+13%', image: 'https://images.unsplash.com/photo-1502716119720-b23a93e5fe1b?w=300&h=350&fit=crop', tags: ['#Satin','#SlipDress'], hot: false },
-  { id: 11, rank: 11, name: 'Knit Co-ord Set',      category: 'Sets',       trend: '+11%', image: 'https://images.unsplash.com/photo-1576566588028-4147f3842f27?w=300&h=350&fit=crop', tags: ['#CoordSet','#KnitFashion'], hot: false },
-  { id: 12, rank: 12, name: 'Barrel-Leg Jeans',     category: 'Denim',      trend: '+9%',  image: 'https://images.unsplash.com/photo-1542574271-7f3b92e6c821?w=300&h=350&fit=crop', tags: ['#BarrelJeans','#DenimTrend'], hot: false },
+  { id: 1,  rank: 1,  name: 'Quiet Luxury Neutrals',  category: 'Aesthetic',  trend: '+58%', emoji: '🤍', desc: 'Understated elegance with beige, cream & taupe tones. Cashmere, silk, and impeccable tailoring.', tags: ['#QuietLuxury','#OldMoney'], hot: true },
+  { id: 2,  rank: 2,  name: 'Barrel-Leg Jeans',       category: 'Denim',      trend: '+51%', emoji: '👖', desc: 'The relaxed, rounded silhouette replacing skinny jeans as 2025\'s dominant denim shape.', tags: ['#BarrelJeans','#DenimTrend'], hot: true },
+  { id: 3,  rank: 3,  name: 'Chocolate Brown Palette',category: 'Color',      trend: '+47%', emoji: '🍫', desc: 'Rich chocolate brown is the breakout color of 2025 — from head-to-toe monochrome to key accents.', tags: ['#ChocolateBrown','#BrownAesthetic'], hot: true },
+  { id: 4,  rank: 4,  name: 'Oversized Blazers',      category: 'Jackets',    trend: '+42%', emoji: '🧥', desc: 'Power dressing reimagined. Oversized structured blazers in neutral tones dominate office to street.', tags: ['#OversizedBlazer','#PowerDressing'], hot: true },
+  { id: 5,  rank: 5,  name: 'Sheer & Mesh Layers',    category: 'Tops',       trend: '+38%', emoji: '✨', desc: 'Sheer fabrics layered over basics create a dreamy, editorial look straight from the SS25 runway.', tags: ['#SheerFashion','#LayeringTrend'], hot: false },
+  { id: 6,  rank: 6,  name: 'Wide-Leg Trousers',      category: 'Bottoms',    trend: '+35%', emoji: '👗', desc: 'Wide-leg silhouettes continue their reign, now in linen, tailored wool, and bold prints.', tags: ['#WideLeg','#TailoredTrousers'], hot: false },
+  { id: 7,  rank: 7,  name: 'Boho Maxi Revival',      category: 'Dresses',    trend: '+32%', emoji: '🌸', desc: 'Flowing maxi dresses with floral prints and tiered layers are back for 2025\'s festival season.', tags: ['#BohoStyle','#MaxiDress'], hot: false },
+  { id: 8,  rank: 8,  name: 'Utility & Cargo Style',  category: 'Workwear',   trend: '+28%', emoji: '🪖', desc: 'Functional pockets, cargo details, and utilitarian silhouettes blend practicality with edge.', tags: ['#CargoStyle','#Utilitarian'], hot: false },
+  { id: 9,  rank: 9,  name: 'Leather Trench Coats',   category: 'Outerwear',  trend: '+24%', emoji: '🖤', desc: 'Leather and faux-leather trenches are the season\'s statement outerwear — sleek and powerful.', tags: ['#LeatherTrench','#CoatSeason'], hot: false },
+  { id: 10, rank: 10, name: 'Denim-on-Denim',         category: 'Denim',      trend: '+21%', emoji: '💙', desc: 'The Canadian tuxedo is officially high fashion. Mix tones for a well-curated double denim look.', tags: ['#DenimOnDenim','#DoubleDemin'], hot: false },
+  { id: 11, rank: 11, name: 'Ballet Core',            category: 'Aesthetic',  trend: '+18%', emoji: '🩰', desc: 'Soft pinks, wrap skirts, satin ribbons, and tulle — ballet aesthetics leap from studio to street.', tags: ['#BalletCore','#SoftGirl'], hot: false },
+  { id: 12, rank: 12, name: 'Knit Co-ord Sets',       category: 'Sets',       trend: '+14%', emoji: '🧶', desc: 'Matching knit tops and bottoms for a cozy, polished look. The smarter alternative to a tracksuit.', tags: ['#KnitCoord','#CoordSet'], hot: false },
 ];
+
 
 const TREND_CHART_DATA = [
   { month: 'Sep', oversized: 30, boho: 45, streetwear: 55, elegant: 60 },

@@ -6,10 +6,25 @@
 // ─── CONSTANTS: Fit score options ─────────────────────────────────────────────
 
 const FIT_SCORES = [
-    { label: 'Good Fit', className: 'fit-good', score: 95, desc: 'This garment fits your body type perfectly. Great choice!' },
-    { label: 'Slightly Loose', className: 'fit-loose', score: 74, desc: 'A bit roomy around the waist. Consider sizing down.' },
-    { label: 'Too Tight', className: 'fit-tight', score: 48, desc: 'Might feel snug. We recommend one size up.' },
+    { label: 'Excellent Fit', className: 'fit-good',  score: 96, desc: 'Perfect match for your body shape and measurements. Outstanding choice!' },
+    { label: 'Great Fit',     className: 'fit-good',  score: 91, desc: 'This garment suits your proportions very well. Go for it!' },
+    { label: 'Good Fit',      className: 'fit-good',  score: 84, desc: 'Fits well overall — slight adjustments may improve drape.' },
+    { label: 'Relaxed Fit',   className: 'fit-loose', score: 74, desc: 'Intentionally roomy cut. Perfect if you like a loose silhouette.' },
+    { label: 'Slightly Loose',className: 'fit-loose', score: 68, desc: 'A bit roomy around the waist. Consider sizing down one step.' },
+    { label: 'Review Sizing', className: 'fit-tight', score: 55, desc: 'May feel snug. We recommend going one size up for comfort.' },
 ];
+
+/**
+ * Deterministic fit score based on garment ID — no random changes.
+ * Same garment always shows the same score.
+ */
+function getFitScoreForGarment(garmentId) {
+    let hash = 0;
+    for (let i = 0; i < garmentId.length; i++) {
+        hash = (hash * 31 + garmentId.charCodeAt(i)) & 0xffff;
+    }
+    return FIT_SCORES[hash % FIT_SCORES.length];
+}
 
 // ─── CONSTANTS: Landing page data ────────────────────────────────────────────
 
@@ -256,15 +271,29 @@ const tryOnState = {
     poseDetectorLoading: null,
     poseDetectorMode: null,
     poseDetectorError: '',
+    personSegmenter: null,
+    personSegmenterLoading: null,
+    personSegmenterMode: null,
+    personSegmenterError: '',
+    personMaskCanvas: null,
+    personMaskCtx: null,
+    garmentLayerCanvas: null,
+    garmentLayerCtx: null,
+    lastSegmentationVideoTime: -1,
     lastVideoTime: -1,
     lastMeasurementTs: 0,
+    generatedTryOnImage: null,
+    garmentRenderMode: 'stylized',
     poseKeypointsWidth: 640,
     poseKeypointsHeight: 480,
-    garmentRenderMode: 'stylized',
     skinProfile: null,
     fullBodyVisible: false,
-    generatedTryOnImage: '',
+    detectedGender: null,    // 'male' | 'female' | null (null = not detected yet)
+    genderFilter: 'all',     // 'male' | 'female' | 'all'
+    snapshotTaken: false,    // true when user freezes a webcam snapshot
+    measurementsLocked: false, // freeze measurements until user requests new capture
 };
+
 
 function initTryOnPage() {
     window._tryOnLoaded = true;
@@ -292,6 +321,7 @@ function bindTryOnControls() {
             tryOnState.poseDetecting = false;
             tryOnState.poseKeypoints = null;
             tryOnState.latestMeasurements = null;
+            tryOnState.measurementsLocked = false;
             tryOnState.skinProfile = null;
             tryOnState.fullBodyVisible = false;
             const hiddenImg = document.getElementById('hidden-img');
@@ -337,6 +367,8 @@ function setTryOnMode(mode) {
     tryOnState.poseDetected = false;
     tryOnState.poseDetecting = false;
     tryOnState.poseKeypoints = null;
+    tryOnState.latestMeasurements = null;
+    tryOnState.measurementsLocked = false;
     tryOnState.skinProfile = null;
     tryOnState.fullBodyVisible = false;
 
@@ -394,6 +426,7 @@ function clearUploadedPhoto() {
     tryOnState.poseDetecting = false;
     tryOnState.poseKeypoints = null;
     tryOnState.latestMeasurements = null;
+    tryOnState.measurementsLocked = false;
     tryOnState.skinProfile = null;
     tryOnState.fullBodyVisible = false;
     renderTryOnCanvas();
@@ -405,6 +438,7 @@ function clearUploadedPhoto() {
 // ─── Canvas: Pose detection + measurements ───────────────────────────────────
 
 const POSE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task';
+const PERSON_SEGMENTER_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float16/latest/selfie_multiclass_256x256.tflite';
 
 function simulatePoseKeypoints(w, h) {
     const cx = w * 0.5;
@@ -435,7 +469,7 @@ function syncHeightInputs() {
 function setHeightCm(value) {
     tryOnState.heightCm = clampHeight(value);
     syncHeightInputs();
-    refreshMeasurements();
+    updateMeasurementsUi();
 }
 
 async function ensurePoseDetector(runningMode = 'IMAGE') {
@@ -479,6 +513,183 @@ async function ensurePoseDetector(runningMode = 'IMAGE') {
     }
 
     return tryOnState.poseDetector;
+}
+
+async function ensurePersonSegmenter(runningMode = 'VIDEO') {
+    if (tryOnState.personSegmenter) {
+        if (tryOnState.personSegmenterMode !== runningMode) {
+            await tryOnState.personSegmenter.setOptions({ runningMode });
+            tryOnState.personSegmenterMode = runningMode;
+        }
+        return tryOnState.personSegmenter;
+    }
+
+    if (tryOnState.personSegmenterLoading) {
+        await tryOnState.personSegmenterLoading;
+        return ensurePersonSegmenter(runningMode);
+    }
+
+    tryOnState.personSegmenterLoading = (async () => {
+        const { FilesetResolver, ImageSegmenter } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
+        const vision = await FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
+        );
+        tryOnState.personSegmenter = await ImageSegmenter.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: PERSON_SEGMENTER_MODEL_URL, delegate: 'GPU' },
+            runningMode,
+            outputCategoryMask: true,
+            outputConfidenceMasks: false,
+        });
+        tryOnState.personSegmenterMode = runningMode;
+        tryOnState.personSegmenterError = '';
+    })();
+
+    try {
+        await tryOnState.personSegmenterLoading;
+    } catch (err) {
+        console.warn('Person segmenter failed to initialize, using fallback overlay:', err);
+        tryOnState.personSegmenterError = 'Live person segmentation unavailable; using standard overlay.';
+    } finally {
+        tryOnState.personSegmenterLoading = null;
+    }
+
+    return tryOnState.personSegmenter;
+}
+
+function ensureCanvasBuffers(width, height) {
+    if (!tryOnState.personMaskCanvas) {
+        tryOnState.personMaskCanvas = document.createElement('canvas');
+        tryOnState.personMaskCtx = tryOnState.personMaskCanvas.getContext('2d', { willReadFrequently: true });
+    }
+    if (!tryOnState.garmentLayerCanvas) {
+        tryOnState.garmentLayerCanvas = document.createElement('canvas');
+        tryOnState.garmentLayerCtx = tryOnState.garmentLayerCanvas.getContext('2d');
+    }
+
+    if (tryOnState.personMaskCanvas.width !== width || tryOnState.personMaskCanvas.height !== height) {
+        tryOnState.personMaskCanvas.width = width;
+        tryOnState.personMaskCanvas.height = height;
+    }
+    if (tryOnState.garmentLayerCanvas.width !== width || tryOnState.garmentLayerCanvas.height !== height) {
+        tryOnState.garmentLayerCanvas.width = width;
+        tryOnState.garmentLayerCanvas.height = height;
+    }
+}
+
+function updatePersonMaskFromSegmentation(canvas) {
+    const segmenter = tryOnState.personSegmenter;
+    const video = tryOnState.videoEl;
+    if (!segmenter || !video || video.readyState < 2) return false;
+    if (tryOnState.lastSegmentationVideoTime === video.currentTime) return true;
+    tryOnState.lastSegmentationVideoTime = video.currentTime;
+
+    let result;
+    try {
+        result = segmenter.detectForVideo(video, performance.now());
+    } catch (err) {
+        console.warn('Video person segmentation frame failed:', err);
+        return false;
+    }
+    if (!result || !result.categoryMask) return false;
+
+    const categoryMask = result.categoryMask;
+    const rawMask = typeof categoryMask.getAsUint8Array === 'function'
+        ? categoryMask.getAsUint8Array()
+        : null;
+
+    const mw = categoryMask.width || 0;
+    const mh = categoryMask.height || 0;
+    if (!rawMask || !mw || !mh) return false;
+
+    ensureCanvasBuffers(canvas.width, canvas.height);
+    const maskCtx = tryOnState.personMaskCtx;
+    if (!maskCtx) return false;
+
+    const small = document.createElement('canvas');
+    small.width = mw;
+    small.height = mh;
+    const sctx = small.getContext('2d', { willReadFrequently: true });
+    const img = sctx.createImageData(mw, mh);
+
+    for (let i = 0; i < rawMask.length; i += 1) {
+        const o = i * 4;
+        const isPerson = rawMask[i] > 0;
+        img.data[o] = 255;
+        img.data[o + 1] = 255;
+        img.data[o + 2] = 255;
+        img.data[o + 3] = isPerson ? 255 : 0;
+    }
+    sctx.putImageData(img, 0, 0);
+
+    maskCtx.clearRect(0, 0, canvas.width, canvas.height);
+    maskCtx.imageSmoothingEnabled = true;
+    maskCtx.drawImage(small, 0, 0, canvas.width, canvas.height);
+    return true;
+}
+
+function drawMaskEdgeOutline(ctx, color = '#c9a96e') {
+    const maskCtx = tryOnState.personMaskCtx;
+    const maskCanvas = tryOnState.personMaskCanvas;
+    if (!maskCtx || !maskCanvas) return;
+
+    const w = maskCanvas.width;
+    const h = maskCanvas.height;
+    if (!w || !h) return;
+
+    const src = maskCtx.getImageData(0, 0, w, h);
+    const out = ctx.createImageData(w, h);
+    const stride = w * 4;
+
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.slice(0, 2), 16) || 201;
+    const g = parseInt(hex.slice(2, 4), 16) || 169;
+    const b = parseInt(hex.slice(4, 6), 16) || 110;
+
+    for (let y = 1; y < h - 1; y += 1) {
+        for (let x = 1; x < w - 1; x += 1) {
+            const i = y * stride + x * 4;
+            const a = src.data[i + 3];
+            if (a < 20) continue;
+
+            const up = src.data[i - stride + 3];
+            const down = src.data[i + stride + 3];
+            const left = src.data[i - 4 + 3];
+            const right = src.data[i + 4 + 3];
+            const edge = (up < 20 || down < 20 || left < 20 || right < 20);
+            if (!edge) continue;
+
+            out.data[i] = r;
+            out.data[i + 1] = g;
+            out.data[i + 2] = b;
+            out.data[i + 3] = 105;
+        }
+    }
+    ctx.putImageData(out, 0, 0);
+}
+
+function drawGarmentOnDetectedPerson(ctx, kp, garmentImg, garmentType, cw, ch) {
+    if (tryOnState.mode !== 'webcam') {
+        drawGarmentOverlay(ctx, kp, garmentImg, garmentType, cw, ch);
+        return;
+    }
+
+    const layerCtx = tryOnState.garmentLayerCtx;
+    const layerCanvas = tryOnState.garmentLayerCanvas;
+    const maskCanvas = tryOnState.personMaskCanvas;
+
+    if (!layerCtx || !layerCanvas || !maskCanvas) {
+        drawGarmentOverlay(ctx, kp, garmentImg, garmentType, cw, ch);
+        return;
+    }
+
+    layerCtx.clearRect(0, 0, cw, ch);
+    drawGarmentOverlay(layerCtx, kp, garmentImg, garmentType, cw, ch);
+    layerCtx.globalCompositeOperation = 'destination-in';
+    layerCtx.drawImage(maskCanvas, 0, 0, cw, ch);
+    layerCtx.globalCompositeOperation = 'source-over';
+
+    ctx.drawImage(layerCanvas, 0, 0);
+    drawMaskEdgeOutline(ctx, tryOnState.selectedGarment?.color || '#c9a96e');
 }
 
 function mapLandmarksToKeypoints(landmarks, width, height) {
@@ -611,6 +822,9 @@ function updateMeasurementsUi() {
                 <span class="fit-badge fit-good">${tryOnState.heightCm} cm</span>
               </div>
               <div class="measurements-grid">${measurementCardsMarkup(tryOnState.latestMeasurements)}</div>
+              <div style="margin-top:12px;display:flex;justify-content:flex-end">
+                <button class="btn btn-outline" onclick="requestNewMeasurements()">New Measurements</button>
+              </div>
               <p style="font-size:12px;color:var(--text-muted);margin-top:10px">Estimates from pose keypoints. Stand straight for best accuracy.</p>
             `;
         }
@@ -618,11 +832,24 @@ function updateMeasurementsUi() {
     renderMeasurementsPage();
 }
 
-function computeAndStoreMeasurements(kp) {
+function computeAndStoreMeasurements(kp, opts = {}) {
+    const { force = false } = opts;
+    if (tryOnState.measurementsLocked && !force) return;
     const m = estimateMeasurements(kp);
     if (!m) return;
     tryOnState.latestMeasurements = m;
+    tryOnState.measurementsLocked = true;
     updateMeasurementsUi();
+}
+
+function requestNewMeasurements() {
+    tryOnState.measurementsLocked = false;
+    if (tryOnState.poseKeypoints) {
+        computeAndStoreMeasurements(tryOnState.poseKeypoints, { force: true });
+    } else {
+        tryOnState.latestMeasurements = null;
+        updateMeasurementsUi();
+    }
 }
 
 function sampleRgb(ctx, x, y) {
@@ -980,6 +1207,7 @@ function startCanvasLoop() {
             let kp = null;
             if (tryOnState.mode === 'webcam') {
                 kp = getVideoPoseKeypoints(canvas) || tryOnState.poseKeypoints;
+                updatePersonMaskFromSegmentation(canvas);
             } else {
                 kp = getUploadPoseKeypoints(canvas);
             }
@@ -991,7 +1219,14 @@ function startCanvasLoop() {
                 tryOnState.selectedGarment
                 && (tryOnState.garmentRenderMode === 'stylized' || tryOnState.garmentImg)
             ) {
-                drawGarmentOverlay(ctx, kp, tryOnState.garmentImg, tryOnState.selectedGarment.type, canvas.width, canvas.height);
+                drawGarmentOnDetectedPerson(
+                    ctx,
+                    kp,
+                    tryOnState.garmentImg,
+                    tryOnState.selectedGarment.type,
+                    canvas.width,
+                    canvas.height,
+                );
             }
             const now = Date.now();
             if (now - tryOnState.lastMeasurementTs > 700) {
@@ -1040,14 +1275,19 @@ async function runPoseDetection() {
             tryOnState.poseKeypointsHeight = 480;
         } else {
             await ensurePoseDetector('VIDEO');
+            await ensurePersonSegmenter('VIDEO');
             const webcamCanvas = document.getElementById('pose-canvas-webcam');
-            if (webcamCanvas) kp = getVideoPoseKeypoints(webcamCanvas);
+            if (webcamCanvas) {
+                kp = getVideoPoseKeypoints(webcamCanvas);
+                updatePersonMaskFromSegmentation(webcamCanvas);
+            }
         }
 
         tryOnState.poseDetected = true;
         if (kp) {
             tryOnState.poseKeypoints = kp;
             computeAndStoreMeasurements(kp);
+            detectGenderFromPose(kp); // auto-filter garments by detected gender
         }
     } catch (err) {
         console.warn('Pose detection failed, using fallback pose:', err);
@@ -1061,39 +1301,172 @@ async function runPoseDetection() {
     }
 }
 
-function generateTryOnImage() {
-    const canvas = document.getElementById(
-        tryOnState.mode === 'webcam' ? 'pose-canvas-webcam' : 'pose-canvas'
-    );
+/**
+ * Capture a snapshot of the current webcam frame or uploaded image.
+ * Returns a plain base64 JPEG string (no data-URL prefix).
+ */
+function captureCurrentFrame() {
+    const mode = tryOnState.mode;
+
+    // Webcam with snapshot taken: read frozen snapshot canvas
+    if (mode === 'webcam' && tryOnState.snapshotTaken) {
+        const snapCanvas = document.getElementById('webcam-snapshot-canvas');
+        if (snapCanvas) {
+            const dataUrl = snapCanvas.toDataURL('image/jpeg', 0.85);
+            return dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+        }
+    }
+
+    // Webcam live: capture from the live video element
+    if (mode === 'webcam' && tryOnState.videoEl) {
+        const v = tryOnState.videoEl;
+        const snap = document.createElement('canvas');
+        snap.width = v.videoWidth || 640;
+        snap.height = v.videoHeight || 480;
+        const sctx = snap.getContext('2d');
+        sctx.drawImage(v, 0, 0, snap.width, snap.height);
+        const dataUrl = snap.toDataURL('image/jpeg', 0.85);
+        return dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+    }
+    // Upload: capture from the pose canvas
+    if (tryOnState.uploadedImageUrl) {
+        const canvas = document.getElementById('pose-canvas');
+        if (canvas) {
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+            return dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+        }
+    }
+    return '';
+}
+
+/**
+ * Generate a photorealistic AI try-on image via Ollama Flux.
+ * Requires:
+ *  • Ollama running locally: `ollama serve`
+ *  • Flux model pulled: `ollama pull hf.co/lllyasviel/flux1-schnell-bnb-nf4`
+ */
+async function generateTryOnImage() {
     const card = document.getElementById('generated-tryon-card');
-    if (!canvas || !card) return;
-    if (!tryOnState.poseDetected || !tryOnState.selectedGarment) {
+    if (!card) return;
+
+    // Guard: need a garment selected
+    if (!tryOnState.selectedGarment) {
         card.style.display = 'block';
         card.innerHTML = `
           <div class="fit-score-header">
-            <div class="fit-score-label">🧠 AI Try-On Image</div>
+            <div class="fit-score-label">🧠 AI Flux Try-On</div>
           </div>
-          <p style="color:var(--text-secondary);font-size:13px">Detect pose and select a garment first, then generate.</p>
+          <p style="color:var(--text-secondary);font-size:13px">Please select a garment first, then generate.</p>
         `;
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
         return;
     }
 
-    const dataUrl = canvas.toDataURL('image/png');
-    tryOnState.generatedTryOnImage = dataUrl;
+    // Capture webcam / upload snapshot
+    const snapshotB64 = captureCurrentFrame();
+    const snapshotDataUrl = snapshotB64
+        ? `data:image/jpeg;base64,${snapshotB64}`
+        : null;
+
+    // Show loading state
     card.style.display = 'block';
     card.innerHTML = `
       <div class="fit-score-header">
-        <div class="fit-score-label">🧠 AI Try-On Image</div>
-        <span class="fit-badge fit-good">Generated</span>
+        <div class="fit-score-label">🧠 AI Flux Try-On</div>
+        <span class="fit-badge" style="background:rgba(201,169,110,0.15);color:#c9a96e">Generating…</span>
       </div>
-      <img src="${dataUrl}" alt="Generated try-on output" style="width:100%;border-radius:14px;border:1px solid var(--border-color);margin-top:8px">
-      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
-        <a class="btn btn-outline" href="${dataUrl}" download="virtual-tryon.png" style="text-decoration:none">⬇ Download</a>
-        <button class="btn btn-glow" onclick="showPage('dashboard')">Save To Wardrobe</button>
+      <div style="display:flex;flex-direction:column;align-items:center;padding:28px 0;gap:14px">
+        <div class="pose-spinner" style="width:40px;height:40px;border-width:3px"></div>
+        <p style="color:var(--text-secondary);font-size:13px;text-align:center">
+          Ollama Flux is generating your outfit image…<br>
+          <span style="color:var(--text-muted);font-size:12px">This may take 30–120 seconds.</span>
+        </p>
       </div>
-      <p style="font-size:12px;color:var(--text-muted);margin-top:10px">AI generated preview from your input and selected garment overlay.</p>
     `;
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try {
+        const { imageBase64, model } = await generateTryOnWithFlux(
+            snapshotB64,
+            tryOnState.selectedGarment
+        );
+
+        const generatedDataUrl = `data:image/png;base64,${imageBase64}`;
+        tryOnState.generatedTryOnImage = generatedDataUrl;
+
+        const modelShort = (model || '').split('/').pop() || 'flux';
+        const garment = tryOnState.selectedGarment;
+
+        card.innerHTML = `
+          <div class="fit-score-header" style="margin-bottom:14px">
+            <div class="fit-score-label">🧠 AI Flux Try-On</div>
+            <span class="fit-badge fit-good">✓ Generated</span>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+            Model: <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">${modelShort}</code>
+            &nbsp;·&nbsp; Garment: <strong style="color:var(--text-primary)">${garment.name}</strong>
+          </p>
+
+          <!-- Side-by-side before / after -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+            ${snapshotDataUrl ? `
+            <div>
+              <p style="font-size:11px;color:var(--text-muted);margin-bottom:6px;text-align:center">📷 Captured</p>
+              <img src="${snapshotDataUrl}"
+                   alt="Webcam snapshot"
+                   style="width:100%;border-radius:10px;border:1px solid var(--border-color)">
+            </div>` : ''}
+            <div ${!snapshotDataUrl ? 'style="grid-column:1/-1"' : ''}>
+              <p style="font-size:11px;color:var(--text-muted);margin-bottom:6px;text-align:center">✨ AI Generated</p>
+              <img src="${generatedDataUrl}"
+                   alt="Flux AI generated try-on"
+                   style="width:100%;border-radius:10px;border:1px solid var(--border-color)">
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="btn btn-outline"
+               href="${generatedDataUrl}"
+               download="flux-tryon-${garment.name.replace(/\s+/g,'-')}.png"
+               style="text-decoration:none">⬇ Download AI Image</a>
+            ${snapshotDataUrl ? `
+            <a class="btn btn-outline"
+               href="${snapshotDataUrl}"
+               download="snapshot.jpg"
+               style="text-decoration:none">⬇ Download Snapshot</a>` : ''}
+            <button class="btn btn-glow" onclick="showPage('dashboard')">Save to Wardrobe</button>
+          </div>
+          <p style="font-size:11px;color:var(--text-muted);margin-top:10px">
+            Photorealistic image generated by Ollama Flux based on your selected outfit.
+          </p>
+        `;
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+        const isOffline = err.message.includes('Cannot reach Ollama') || err.message.includes('not running');
+        card.innerHTML = `
+          <div class="fit-score-header">
+            <div class="fit-score-label">🧠 AI Flux Try-On</div>
+            <span class="fit-badge fit-poor">Error</span>
+          </div>
+          <p style="color:#f87171;font-size:13px;margin:12px 0 8px">${err.message}</p>
+          ${err.hint ? `<p style="color:var(--text-muted);font-size:12px;margin-bottom:10px">${err.hint}</p>` : ''}
+          ${isOffline ? `
+          <div style="background:rgba(201,169,110,0.08);border:1px solid rgba(201,169,110,0.2);border-radius:10px;padding:14px;margin-top:8px">
+            <p style="font-size:12px;color:var(--text-secondary);font-weight:600;margin-bottom:8px">⚡ Quick Setup</p>
+            <p style="font-size:12px;color:var(--text-muted);line-height:1.7">
+              1. Install Ollama: <a href="https://ollama.com" target="_blank" style="color:#c9a96e">ollama.com</a><br>
+              2. In terminal: <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">ollama serve</code><br>
+              3. Pull model: <code style="background:rgba(255,255,255,0.06);padding:2px 6px;border-radius:4px">ollama pull hf.co/lllyasviel/flux1-schnell-bnb-nf4</code><br>
+              4. Reload this page and try again.
+            </p>
+          </div>` : ''}
+          <button class="btn btn-outline" onclick="generateTryOnImage()" style="margin-top:14px">↺ Retry</button>
+        `;
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 }
+
 
 function getPoseUiElements() {
     if (tryOnState.mode === 'webcam') {
@@ -1165,31 +1538,53 @@ function renderMeasurementsPage() {
 }
 
 function refreshMeasurements() {
-    if (tryOnState.poseKeypoints) computeAndStoreMeasurements(tryOnState.poseKeypoints);
-    else renderMeasurementsPage();
+    requestNewMeasurements();
 }
-
-// ─── Garment Panel ────────────────────────────────────────────────────────────
 
 /**
  * Render the garment panel sidebar.
+ * Shows CSS color swatches (no external images).
+ * Filters by detected gender when available.
  * @param {object} allGarments - { shirts, jackets, dresses, pants }
  * @param {string} activeCategory
  */
 function renderGarmentPanel(allGarments, activeCategory) {
     const categories = [
-        { key: 'shirts', label: '👕 Tops' },
+        { key: 'shirts',  label: '👕 Tops' },
         { key: 'jackets', label: '🧥 Jackets' },
         { key: 'dresses', label: '👗 Dresses' },
-        { key: 'pants', label: '👖 Pants' },
+        { key: 'pants',   label: '👖 Pants' },
     ];
+
+    const typeIcon = { shirts: '👕', jackets: '🧥', dresses: '👗', pants: '👖' };
 
     const tabsEl = document.getElementById('garment-tabs');
     const gridEl = document.getElementById('garment-grid');
     if (!tabsEl || !gridEl) return;
 
+    // Gender filter bar
+    const gf = tryOnState.genderFilter;
+    const detected = tryOnState.detectedGender;
+    const genderBadgeHtml = detected
+        ? `<div style="margin-bottom:10px;padding:6px 12px;border-radius:8px;background:rgba(201,169,110,0.12);border:1px solid rgba(201,169,110,0.25);font-size:12px;color:#c9a96e">
+            ${detected === 'male' ? '👨' : '👩'} Gender detected: <strong>${detected}</strong> — showing relevant garments
+           </div>`
+        : '';
+
+    const genderBarHtml = `
+      ${genderBadgeHtml}
+      <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+        ${['all','male','female'].map(g => `
+          <button onclick="setGarmentGenderFilter('${g}')"
+            style="padding:4px 10px;border-radius:20px;border:1px solid ${gf===g ? '#c9a96e' : 'var(--border-color)'};
+                   background:${gf===g ? 'rgba(201,169,110,0.18)' : 'transparent'};
+                   color:${gf===g ? '#c9a96e' : 'var(--text-muted)'};font-size:11px;cursor:pointer">
+            ${g === 'all' ? '🌐 All' : g === 'male' ? '👨 Men' : '👩 Women'}
+          </button>`).join('')}
+      </div>`;
+
     // Category tabs
-    tabsEl.innerHTML = categories.map(({ key, label }) => `
+    tabsEl.innerHTML = genderBarHtml + categories.map(({ key, label }) => `
     <button
       class="garment-tab ${key === activeCategory ? 'active' : ''}"
       data-category="${key}"
@@ -1197,22 +1592,47 @@ function renderGarmentPanel(allGarments, activeCategory) {
     >${label}</button>
   `).join('');
 
-    // Garment grid
-    const garments = allGarments[activeCategory] || [];
+    // Garment grid — filter by gender, show color swatch
+    const allInCategory = allGarments[activeCategory] || [];
+    const garments = allInCategory.filter(g => {
+        if (gf === 'all') return true;
+        return g.gender === gf || g.gender === 'unisex';
+    });
+
+    const icon = typeIcon[activeCategory] || '👕';
+
     gridEl.innerHTML = garments.length === 0
-        ? `<div class="empty-state" style="grid-column:1/-1"><div class="empty-state__icon">👗</div><p class="empty-state__title">Loading garments...</p></div>`
+        ? `<div class="empty-state" style="grid-column:1/-1">
+            <div class="empty-state__icon">${icon}</div>
+            <p class="empty-state__title">No garments found</p>
+            <p class="empty-state__desc">Try changing the gender filter above.</p>
+           </div>`
         : garments.map((g) => {
             const isSelected = tryOnState.selectedGarment && tryOnState.selectedGarment.id === g.id;
+            const genderBadge = g.gender === 'unisex' ? '🌐' : g.gender === 'male' ? '👨' : '👩';
             return `
           <div class="garment-item ${isSelected ? 'selected' : ''}" onclick="selectGarment('${g.id}')">
-            <div class="garment-item__img-wrap">
-              <img class="garment-item__img" src="${g.image}" alt="${g.name}" loading="lazy">
+            <div class="garment-item__img-wrap" style="position:relative;border-bottom:3px solid ${g.color};background:var(--bg-secondary)">
+              <img
+                class="garment-item__img"
+                src="${g.image}"
+                alt="${g.name}"
+                loading="lazy"
+                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+              >
+              <div style="
+                display:none;position:absolute;inset:0;
+                background: linear-gradient(135deg, ${lightenColor(g.color, 40)} 0%, ${g.color} 60%, ${darkenColor(g.color, 30)} 100%);
+                align-items:center;justify-content:center;font-size:32px;
+              ">
+                <span style="filter:drop-shadow(0 2px 6px rgba(0,0,0,0.3))">${icon}</span>
+              </div>
               ${isSelected ? '<div class="garment-item__check">✓</div>' : ''}
             </div>
             <div class="garment-item__body">
               <p class="garment-item__name">${g.name}</p>
               <div style="display:flex;justify-content:space-between;align-items:center">
-                <p class="garment-item__brand">${g.brand}</p>
+                <p class="garment-item__brand">${g.brand} <span style="font-size:10px">${genderBadge}</span></p>
                 <p class="garment-item__price">${formatINR(g.price)}</p>
               </div>
             </div>
@@ -1220,10 +1640,65 @@ function renderGarmentPanel(allGarments, activeCategory) {
         }).join('');
 }
 
+/** Lighten a hex color by amt (0-255) */
+function lightenColor(hex, amt) {
+    const h = (hex || '#888').replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map(c => c+c).join('') : h, 16);
+    const r = Math.min(255, ((n >> 16) & 255) + amt);
+    const g = Math.min(255, ((n >> 8) & 255) + amt);
+    const b = Math.min(255, (n & 255) + amt);
+    return `rgb(${r},${g},${b})`;
+}
+/** Darken a hex color by amt (0-255) */
+function darkenColor(hex, amt) {
+    const h = (hex || '#888').replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map(c => c+c).join('') : h, 16);
+    const r = Math.max(0, ((n >> 16) & 255) - amt);
+    const g = Math.max(0, ((n >> 8) & 255) - amt);
+    const b = Math.max(0, (n & 255) - amt);
+    return `rgb(${r},${g},${b})`;
+}
+
+/** Set the gender filter and re-render garment panel. */
+function setGarmentGenderFilter(gender) {
+    tryOnState.genderFilter = gender;
+    renderGarmentPanel(tryOnState.allGarments, tryOnState.activeCategory);
+}
+
+/** Select garment category tab. */
 function selectGarmentCategory(category) {
     tryOnState.activeCategory = category;
     renderGarmentPanel(tryOnState.allGarments, category);
 }
+
+
+/**
+ * Detect gender from pose keypoints using shoulder/hip width ratio.
+ * Broader shoulders relative to hips → male tendency; narrower → female tendency.
+ * Sets tryOnState.detectedGender and updates genderFilter.
+ */
+function detectGenderFromPose(kp) {
+    if (!kp || !kp.leftShoulder || !kp.rightShoulder || !kp.leftHip || !kp.rightHip) return;
+    const shoulderW = Math.abs(kp.rightShoulder[0] - kp.leftShoulder[0]);
+    const hipW = Math.abs(kp.rightHip[0] - kp.leftHip[0]);
+    if (shoulderW === 0 || hipW === 0) return;
+
+    const ratio = shoulderW / hipW;
+    // ratio > 1.15 → typically male proportions; < 0.95 → typically female proportions
+    if (ratio > 1.15) {
+        tryOnState.detectedGender = 'male';
+        tryOnState.genderFilter = 'male';
+    } else if (ratio < 0.95) {
+        tryOnState.detectedGender = 'female';
+        tryOnState.genderFilter = 'female';
+    } else {
+        tryOnState.detectedGender = null;
+        // Don't change filter — keep user's selection
+    }
+    renderGarmentPanel(tryOnState.allGarments, tryOnState.activeCategory);
+}
+
+
 
 function selectGarment(garmentId) {
     const g = tryOnState.allGarments[tryOnState.activeCategory]?.find((x) => x.id === garmentId);
@@ -1242,23 +1717,12 @@ function selectGarment(garmentId) {
 
     tryOnState.selectedGarment = { ...g, type: tryOnState.activeCategory };
 
-    // Pick a random fit score
-    const fitIdx = Math.floor(Math.random() * FIT_SCORES.length);
-    tryOnState.fitScore = FIT_SCORES[fitIdx];
+    // Stable fit score — deterministic based on garment ID, never random
+    tryOnState.fitScore = getFitScoreForGarment(g.id);
 
-    // Load garment image for canvas
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = g.image;
-    img.onload = () => {
-        tryOnState.garmentImg = img;
-        const transparencyRatio = evaluateImageTransparency(img);
-        tryOnState.garmentRenderMode = transparencyRatio > 0.18 ? 'image' : 'stylized';
-    };
-    img.onerror = () => {
-        tryOnState.garmentImg = null;
-        tryOnState.garmentRenderMode = 'stylized';
-    };
+    // For stylized canvas rendering we still use colors
+    tryOnState.garmentImg = null;
+    tryOnState.garmentRenderMode = 'stylized';
 
     renderGarmentPanel(tryOnState.allGarments, tryOnState.activeCategory);
     updateFitScoreCard();
@@ -1332,17 +1796,22 @@ function startWebcam() {
                     console.warn('Unable to autoplay webcam video:', err);
                 }
                 tryOnState.videoEl = video;
+                tryOnState.lastSegmentationVideoTime = -1;
                 tryOnState.poseDetected = false;
                 tryOnState.poseDetecting = false;
                 tryOnState.poseKeypoints = null;
                 tryOnState.latestMeasurements = null;
+                tryOnState.measurementsLocked = false;
                 tryOnState.skinProfile = null;
                 tryOnState.fullBodyVisible = false;
+                tryOnState.snapshotTaken = false;
                 if (placeholder) placeholder.style.display = 'none';
-                if (webcamCanvas) webcamCanvas.style.display = 'block';
-                if (webcamDetected) webcamDetected.style.display = 'none';
-                if (webcamOverlay) webcamOverlay.style.display = 'flex';
+                const liveWrap = document.getElementById('webcam-live-wrap');
+                if (liveWrap) liveWrap.style.display = 'block';
+                const snapWrap = document.getElementById('webcam-snapshot-wrap');
+                if (snapWrap) snapWrap.style.display = 'none';
                 startCanvasLoop();
+                ensurePersonSegmenter('VIDEO').catch(() => {});
                 updatePoseOverlay();
                 updateMeasurementsUi();
                 updateSkinAnalysisUi();
@@ -1365,24 +1834,78 @@ function stopWebcam() {
         tryOnState.mediaStream.getTracks().forEach((t) => t.stop());
         tryOnState.mediaStream = null;
     }
+    tryOnState.snapshotTaken = false;
     const placeholder = document.getElementById('webcam-placeholder');
-    const webcamCanvas = document.getElementById('pose-canvas-webcam');
-    const webcamOverlay = document.getElementById('pose-overlay-webcam');
-    const webcamDetected = document.getElementById('pose-detected-badge-webcam');
+    const liveWrap = document.getElementById('webcam-live-wrap');
+    const snapWrap = document.getElementById('webcam-snapshot-wrap');
     if (placeholder) {
         placeholder.style.display = 'flex';
-        placeholder.innerHTML = `
-      <div>
-        <div style="font-size:48px;margin-bottom:12px;opacity:0.5">📷</div>
-        <p>Initializing camera...</p>
-      </div>`;
+        placeholder.innerHTML = `<div>
+          <div style="font-size:48px;margin-bottom:12px;opacity:0.5">📷</div>
+          <p>Initializing camera…</p>
+        </div>`;
     }
-    if (webcamCanvas) webcamCanvas.style.display = 'none';
-    if (webcamOverlay) webcamOverlay.style.display = 'none';
-    if (webcamDetected) webcamDetected.style.display = 'none';
+    if (liveWrap) liveWrap.style.display = 'none';
+    if (snapWrap) snapWrap.style.display = 'none';
     tryOnState.videoEl = null;
     tryOnState.lastVideoTime = -1;
+    tryOnState.lastSegmentationVideoTime = -1;
+    tryOnState.personMaskCanvas = null;
+    tryOnState.personMaskCtx = null;
+    tryOnState.garmentLayerCanvas = null;
+    tryOnState.garmentLayerCtx = null;
     stopCanvasLoop();
+}
+
+/**
+ * Freeze the live webcam feed into a snapshot and show the preview.
+ * User can then review and generate with Flux, or retake.
+ */
+function takeWebcamSnapshot() {
+    const v = tryOnState.videoEl;
+    if (!v || !v.videoWidth) {
+        alert('Webcam not ready yet. Please wait for the camera feed.');
+        return;
+    }
+    const snapCanvas = document.getElementById('webcam-snapshot-canvas');
+    if (!snapCanvas) return;
+
+    // Draw current frame to snapshot canvas
+    snapCanvas.width = v.videoWidth;
+    snapCanvas.height = v.videoHeight;
+    snapCanvas.getContext('2d').drawImage(v, 0, 0, v.videoWidth, v.videoHeight);
+
+    tryOnState.snapshotTaken = true;
+
+    // Switch to snapshot view
+    const liveWrap = document.getElementById('webcam-live-wrap');
+    const snapWrap = document.getElementById('webcam-snapshot-wrap');
+    if (liveWrap) liveWrap.style.display = 'none';
+    if (snapWrap) snapWrap.style.display = 'block';
+    snapWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/**
+ * Go back to live webcam feed, clearing the snapshot.
+ */
+function retakeWebcamSnapshot() {
+    tryOnState.snapshotTaken = false;
+
+    // Clear snapshot canvas
+    const snapCanvas = document.getElementById('webcam-snapshot-canvas');
+    if (snapCanvas) {
+        snapCanvas.getContext('2d').clearRect(0, 0, snapCanvas.width, snapCanvas.height);
+    }
+
+    // Show live feed again
+    const liveWrap = document.getElementById('webcam-live-wrap');
+    const snapWrap = document.getElementById('webcam-snapshot-wrap');
+    if (liveWrap) liveWrap.style.display = 'block';
+    if (snapWrap) snapWrap.style.display = 'none';
+
+    // Also hide any previously generated card
+    const card = document.getElementById('generated-tryon-card');
+    if (card) { card.style.display = 'none'; card.innerHTML = ''; }
 }
 
 // ─── SECTION 5: Recommendations Page ─────────────────────────────────────────
@@ -1599,14 +2122,19 @@ function renderTrendItems(items) {
     const el = document.getElementById('trend-items-grid');
     if (!el) return;
     el.innerHTML = items.map((item) => `
-    <div class="trend-item">
-      <div class="trend-item__img-wrap">
-        <img class="trend-item__img" src="${item.image}" alt="${item.name}" loading="lazy">
+    <div class="trend-item" style="cursor:default">
+      <!-- Emoji + colour swatch panel instead of image -->
+      <div class="trend-item__img-wrap" style="
+        background: linear-gradient(135deg, rgba(201,169,110,0.15) 0%, rgba(176,125,107,0.12) 100%);
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        gap:8px;min-height:160px;border-radius:12px 12px 0 0;position:relative">
+        <span style="font-size:52px;line-height:1">${item.emoji || '✨'}</span>
         <div class="trend-item__rank ${item.rank <= 3 ? 'trend-item__rank--top' : 'trend-item__rank--rest'}">${item.rank}</div>
         ${item.hot ? '<div class="trend-item__hot">🔥 HOT</div>' : ''}
       </div>
       <div class="trend-item__body">
         <p class="trend-item__name">${item.name}</p>
+        ${item.desc ? `<p style="font-size:12px;color:var(--text-muted);line-height:1.5;margin:6px 0 8px">${item.desc}</p>` : ''}
         <div class="trend-item__meta">
           <span class="trend-item__cat">${item.category}</span>
           <span class="trend-item__pct">${item.trend}</span>

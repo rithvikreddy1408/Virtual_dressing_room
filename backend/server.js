@@ -14,8 +14,8 @@ const PORT = process.env.PORT || 3001;
 // Allow cross-origin requests (useful when opening frontend directly from file system)
 app.use(cors());
 
-// Parse JSON request bodies
-app.use(express.json());
+// Parse JSON request bodies (limit raised for base64 image payloads from webcam)
+app.use(express.json({ limit: '10mb' }));
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 
