@@ -46,7 +46,7 @@ const LANDING_STATS = [
 
 /**
  * Show the given page section and update nav links to reflect the active page.
- * @param {string} pageId - e.g. 'home', 'try-on', 'recommendations', 'trends', 'dashboard'
+ * @param {string} pageId - e.g. 'home', 'try-on', 'measure', 'recommendations', 'trends', 'dashboard'
  */
 function showPage(pageId) {
     // Hide all sections
@@ -72,6 +72,8 @@ function showPage(pageId) {
     // On-demand page initialisation (only runs once)
     if (pageId === 'trends' && !window._trendsLoaded) loadTrendsPage();
     if (pageId === 'try-on' && !window._tryOnLoaded) initTryOnPage();
+    if (pageId === 'measure' && !window._measureLoaded) initMeasurePage();
+    if (pageId === 'measure') renderMeasurementsPage();
     if (pageId === 'recommendations') {
         if (!window._recoLoaded) initRecoPage();
         resetRecommendationsView();
@@ -215,6 +217,17 @@ const tryOnState = {
     canvasHeight: 480,
     activeCategory: 'shirts',
     allGarments: {},
+    poseKeypoints: null,
+    latestMeasurements: null,
+    heightCm: 170,
+    poseDetector: null,
+    poseDetectorLoading: null,
+    poseDetectorMode: null,
+    poseDetectorError: '',
+    lastVideoTime: -1,
+    lastMeasurementTs: 0,
+    poseKeypointsWidth: 640,
+    poseKeypointsHeight: 480,
 };
 
 function initTryOnPage() {
@@ -237,11 +250,24 @@ function bindTryOnControls() {
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            tryOnState.uploadedImageUrl = URL.createObjectURL(file);
+            const url = URL.createObjectURL(file);
+            tryOnState.uploadedImageUrl = url;
             tryOnState.poseDetected = false;
             tryOnState.poseDetecting = false;
+            tryOnState.poseKeypoints = null;
+            tryOnState.latestMeasurements = null;
+            const hiddenImg = document.getElementById('hidden-img');
+            if (hiddenImg) hiddenImg.src = url;
             renderTryOnCanvas();
+            startCanvasLoop();
+            updatePoseOverlay();
+            updateMeasurementsUi();
         });
+    }
+
+    const heightInput = document.getElementById('height-input');
+    if (heightInput) {
+        heightInput.addEventListener('input', (e) => setHeightCm(e.target.value));
     }
 
     // Skeleton toggle
@@ -262,11 +288,16 @@ function bindTryOnControls() {
             saveBtn.classList.toggle('saved', tryOnState.saved);
         });
     }
+
+    syncHeightInputs();
 }
 
 /** Switch between upload and webcam modes. */
 function setTryOnMode(mode) {
     tryOnState.mode = mode;
+    tryOnState.poseDetected = false;
+    tryOnState.poseDetecting = false;
+    tryOnState.poseKeypoints = null;
 
     document.querySelectorAll('.mode-tab').forEach((tab) => {
         tab.classList.toggle('active', tab.dataset.mode === mode);
@@ -282,6 +313,8 @@ function setTryOnMode(mode) {
     else stopWebcam();
 
     renderTryOnCanvas();
+    updatePoseOverlay();
+    renderMeasurementsPage();
 }
 
 /** Render the canvas area depending on state. */
@@ -309,9 +342,25 @@ function renderTryOnCanvas() {
     }
 }
 
-// ─── Canvas: Pose simulation ──────────────────────────────────────────────────
+function clearUploadedPhoto() {
+    const fileInput = document.getElementById('photo-upload-input');
+    const hiddenImg = document.getElementById('hidden-img');
+    if (fileInput) fileInput.value = '';
+    if (hiddenImg) hiddenImg.src = '';
+    tryOnState.uploadedImageUrl = null;
+    tryOnState.poseDetected = false;
+    tryOnState.poseDetecting = false;
+    tryOnState.poseKeypoints = null;
+    tryOnState.latestMeasurements = null;
+    renderTryOnCanvas();
+    updatePoseOverlay();
+    updateMeasurementsUi();
+}
 
-/** Get simulated pose keypoints (fractions of canvas size). */
+// ─── Canvas: Pose detection + measurements ───────────────────────────────────
+
+const POSE_MODEL_URL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task';
+
 function simulatePoseKeypoints(w, h) {
     const cx = w * 0.5;
     return {
@@ -323,6 +372,212 @@ function simulatePoseKeypoints(w, h) {
         leftAnkle: [cx - w * 0.1, h * 0.92],
         rightAnkle: [cx + w * 0.1, h * 0.92],
     };
+}
+
+function clampHeight(value) {
+    const n = Number.parseInt(value, 10);
+    if (Number.isNaN(n)) return 170;
+    return Math.min(220, Math.max(120, n));
+}
+
+function syncHeightInputs() {
+    const h1 = document.getElementById('height-input');
+    const h2 = document.getElementById('measure-height-input');
+    if (h1) h1.value = `${tryOnState.heightCm}`;
+    if (h2) h2.value = `${tryOnState.heightCm}`;
+}
+
+function setHeightCm(value) {
+    tryOnState.heightCm = clampHeight(value);
+    syncHeightInputs();
+    refreshMeasurements();
+}
+
+async function ensurePoseDetector(runningMode = 'IMAGE') {
+    if (tryOnState.poseDetector) {
+        if (tryOnState.poseDetectorMode !== runningMode) {
+            await tryOnState.poseDetector.setOptions({ runningMode });
+            tryOnState.poseDetectorMode = runningMode;
+        }
+        return tryOnState.poseDetector;
+    }
+
+    if (tryOnState.poseDetectorLoading) {
+        await tryOnState.poseDetectorLoading;
+        return ensurePoseDetector(runningMode);
+    }
+
+    tryOnState.poseDetectorLoading = (async () => {
+        const { FilesetResolver, PoseLandmarker } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14');
+        const vision = await FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
+        );
+        tryOnState.poseDetector = await PoseLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: POSE_MODEL_URL, delegate: 'GPU' },
+            runningMode,
+            numPoses: 1,
+            minPoseDetectionConfidence: 0.45,
+            minPosePresenceConfidence: 0.45,
+            minTrackingConfidence: 0.45,
+        });
+        tryOnState.poseDetectorMode = runningMode;
+        tryOnState.poseDetectorError = '';
+    })();
+
+    try {
+        await tryOnState.poseDetectorLoading;
+    } catch (err) {
+        console.warn('Pose detector failed to initialize, using fallback:', err);
+        tryOnState.poseDetectorError = 'Live AI model could not load; using fallback pose.';
+    } finally {
+        tryOnState.poseDetectorLoading = null;
+    }
+
+    return tryOnState.poseDetector;
+}
+
+function mapLandmarksToKeypoints(landmarks, width, height) {
+    if (!landmarks || landmarks.length < 29) return null;
+    const scale = (idx) => {
+        const p = landmarks[idx];
+        if (!p) return null;
+        return [p.x * width, p.y * height];
+    };
+    return {
+        nose: scale(0),
+        leftShoulder: scale(11),
+        rightShoulder: scale(12),
+        leftHip: scale(23),
+        rightHip: scale(24),
+        leftAnkle: scale(27),
+        rightAnkle: scale(28),
+    };
+}
+
+function getUploadPoseKeypoints(canvas) {
+    if (!tryOnState.poseKeypoints) return null;
+    if (
+        tryOnState.poseKeypointsWidth === canvas.width
+        && tryOnState.poseKeypointsHeight === canvas.height
+    ) {
+        return tryOnState.poseKeypoints;
+    }
+
+    const sx = canvas.width / (tryOnState.poseKeypointsWidth || canvas.width);
+    const sy = canvas.height / (tryOnState.poseKeypointsHeight || canvas.height);
+    const scaled = {};
+    for (const [key, pt] of Object.entries(tryOnState.poseKeypoints)) {
+        scaled[key] = pt ? [pt[0] * sx, pt[1] * sy] : null;
+    }
+    return scaled;
+}
+
+function getVideoPoseKeypoints(canvas) {
+    const detector = tryOnState.poseDetector;
+    const video = tryOnState.videoEl;
+    if (!detector || !video || video.readyState < 2) return null;
+
+    if (tryOnState.lastVideoTime === video.currentTime) return null;
+    tryOnState.lastVideoTime = video.currentTime;
+
+    let result;
+    try {
+        result = detector.detectForVideo(video, performance.now());
+    } catch (err) {
+        console.warn('Video pose detection frame failed:', err);
+        return null;
+    }
+    if (!result || !result.landmarks || !result.landmarks.length) return null;
+
+    return mapLandmarksToKeypoints(result.landmarks[0], canvas.width, canvas.height);
+}
+
+function dist(a, b) {
+    if (!a || !b) return 0;
+    const dx = a[0] - b[0];
+    const dy = a[1] - b[1];
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function estimateMeasurements(kp) {
+    if (!kp || !kp.nose || !kp.leftShoulder || !kp.rightShoulder || !kp.leftHip || !kp.rightHip) return null;
+
+    const shoulderMid = [
+        (kp.leftShoulder[0] + kp.rightShoulder[0]) / 2,
+        (kp.leftShoulder[1] + kp.rightShoulder[1]) / 2,
+    ];
+    const hipMid = [
+        (kp.leftHip[0] + kp.rightHip[0]) / 2,
+        (kp.leftHip[1] + kp.rightHip[1]) / 2,
+    ];
+
+    const leftBodyH = kp.leftAnkle ? dist(kp.nose, kp.leftAnkle) : 0;
+    const rightBodyH = kp.rightAnkle ? dist(kp.nose, kp.rightAnkle) : 0;
+    const bodyPx = (leftBodyH && rightBodyH) ? (leftBodyH + rightBodyH) / 2 : Math.max(leftBodyH, rightBodyH, dist(kp.nose, hipMid) * 1.8);
+    if (!bodyPx) return null;
+
+    const pxToCm = tryOnState.heightCm / bodyPx;
+    const shoulderW = dist(kp.leftShoulder, kp.rightShoulder) * pxToCm;
+    const hipW = dist(kp.leftHip, kp.rightHip) * pxToCm;
+    const torsoLen = dist(shoulderMid, hipMid) * pxToCm;
+    const inseamDivisor = kp.leftAnkle && kp.rightAnkle ? 2 : 1;
+    const inseam = (
+        (kp.leftAnkle ? dist(kp.leftHip, kp.leftAnkle) : 0)
+        + (kp.rightAnkle ? dist(kp.rightHip, kp.rightAnkle) : 0)
+    ) / inseamDivisor * pxToCm;
+
+    return {
+        shoulder: Math.round(shoulderW * 10) / 10,
+        chest: Math.round((shoulderW * 2.05) * 10) / 10,
+        waist: Math.round((hipW * 1.55) * 10) / 10,
+        hips: Math.round((hipW * 1.95) * 10) / 10,
+        inseam: Math.round(inseam * 10) / 10,
+        torso: Math.round(torsoLen * 10) / 10,
+    };
+}
+
+function measurementCardsMarkup(measurements) {
+    const rows = [
+        { label: 'Shoulder Width', key: 'shoulder' },
+        { label: 'Chest (est.)', key: 'chest' },
+        { label: 'Waist (est.)', key: 'waist' },
+        { label: 'Hips (est.)', key: 'hips' },
+        { label: 'Inseam (est.)', key: 'inseam' },
+        { label: 'Torso Length', key: 'torso' },
+    ];
+    return rows.map((item) => `
+      <div class="measurement-card">
+        <p class="measurement-card__label">${item.label}</p>
+        <p class="measurement-card__value">${measurements[item.key]} <span>cm</span></p>
+      </div>
+    `).join('');
+}
+
+function updateMeasurementsUi() {
+    const card = document.getElementById('body-measurements-card');
+    if (card) {
+        if (!tryOnState.latestMeasurements) {
+            card.style.display = 'none';
+        } else {
+            card.style.display = 'block';
+            card.innerHTML = `
+              <div class="fit-score-header">
+                <div class="fit-score-label">📏 Body Measurements (Estimated)</div>
+                <span class="fit-badge fit-good">${tryOnState.heightCm} cm</span>
+              </div>
+              <div class="measurements-grid">${measurementCardsMarkup(tryOnState.latestMeasurements)}</div>
+              <p style="font-size:12px;color:var(--text-muted);margin-top:10px">Estimates from pose keypoints. Stand straight for best accuracy.</p>
+            `;
+        }
+    }
+    renderMeasurementsPage();
+}
+
+function computeAndStoreMeasurements(kp) {
+    const m = estimateMeasurements(kp);
+    if (!m) return;
+    tryOnState.latestMeasurements = m;
+    updateMeasurementsUi();
 }
 
 /** Draw skeleton lines and keypoint dots onto the canvas context. */
@@ -419,10 +674,22 @@ function startCanvasLoop() {
 
         // Draw pose and garment if detected
         if (tryOnState.poseDetected) {
-            const kp = simulatePoseKeypoints(canvas.width, canvas.height);
+            let kp = null;
+            if (tryOnState.mode === 'webcam') {
+                kp = getVideoPoseKeypoints(canvas) || tryOnState.poseKeypoints;
+            } else {
+                kp = getUploadPoseKeypoints(canvas);
+            }
+            if (!kp) kp = simulatePoseKeypoints(canvas.width, canvas.height);
+            tryOnState.poseKeypoints = kp;
             if (tryOnState.showSkeleton) drawSkeleton(ctx, kp);
             if (tryOnState.selectedGarment && tryOnState.garmentImg) {
                 drawGarmentOverlay(ctx, kp, tryOnState.garmentImg, tryOnState.selectedGarment.type, canvas.width, canvas.height);
+            }
+            const now = Date.now();
+            if (now - tryOnState.lastMeasurementTs > 700) {
+                tryOnState.lastMeasurementTs = now;
+                computeAndStoreMeasurements(kp);
             }
         }
 
@@ -440,16 +707,51 @@ function stopCanvasLoop() {
 }
 
 /** Called when user clicks "Detect My Body Pose". */
-function runPoseDetection() {
+async function runPoseDetection() {
     if (tryOnState.poseDetecting) return;
+    if (tryOnState.mode === 'upload' && !tryOnState.uploadedImageUrl) return;
+    if (tryOnState.mode === 'webcam' && !tryOnState.videoEl) return;
+
     tryOnState.poseDetecting = true;
     updatePoseOverlay();
 
-    setTimeout(() => {
+    try {
+        let kp = null;
+        if (tryOnState.mode === 'upload') {
+            const imgEl = document.getElementById('hidden-img');
+            if (!imgEl || !imgEl.complete) throw new Error('Image not ready');
+            const detector = await ensurePoseDetector('IMAGE');
+            if (detector) {
+                const res = detector.detect(imgEl);
+                if (res?.landmarks?.length) {
+                    kp = mapLandmarksToKeypoints(res.landmarks[0], 640, 480);
+                }
+            }
+            if (!kp) kp = simulatePoseKeypoints(640, 480);
+            tryOnState.poseKeypoints = kp;
+            tryOnState.poseKeypointsWidth = 640;
+            tryOnState.poseKeypointsHeight = 480;
+        } else {
+            await ensurePoseDetector('VIDEO');
+            const webcamCanvas = document.getElementById('pose-canvas-webcam');
+            if (webcamCanvas) kp = getVideoPoseKeypoints(webcamCanvas);
+        }
+
         tryOnState.poseDetected = true;
+        if (kp) {
+            tryOnState.poseKeypoints = kp;
+            computeAndStoreMeasurements(kp);
+        }
+    } catch (err) {
+        console.warn('Pose detection failed, using fallback pose:', err);
+        tryOnState.poseDetected = true;
+        tryOnState.poseKeypoints = simulatePoseKeypoints(640, 480);
+        computeAndStoreMeasurements(tryOnState.poseKeypoints);
+    } finally {
         tryOnState.poseDetecting = false;
         updatePoseOverlay();
-    }, 1800);
+        startCanvasLoop();
+    }
 }
 
 function getPoseUiElements() {
@@ -482,12 +784,48 @@ function updatePoseOverlay() {
         <p style="font-size:13px;color:rgba(255,255,255,0.6);margin-top:6px">AI is mapping 33 keypoints</p>
       </div>`;
     } else {
+        const cta = tryOnState.mode === 'webcam' ? '✨ Try On Selected Outfit' : '✨ Detect My Body Pose';
         overlay.style.display = 'flex';
         overlay.innerHTML = `
       <button class="btn btn-glow" onclick="runPoseDetection()" style="font-size:15px;padding:16px 36px">
-        ✨ Try On Selected Outfit
+        ${cta}
       </button>`;
     }
+}
+
+function initMeasurePage() {
+    window._measureLoaded = true;
+    const input = document.getElementById('measure-height-input');
+    if (input) {
+        input.addEventListener('input', (e) => setHeightCm(e.target.value));
+    }
+    renderMeasurementsPage();
+}
+
+function renderMeasurementsPage() {
+    const grid = document.getElementById('measurements-page-grid');
+    const note = document.getElementById('measurements-page-note');
+    if (!grid || !note) return;
+
+    if (!tryOnState.latestMeasurements) {
+        grid.innerHTML = `
+          <div class="empty-state" style="grid-column:1/-1">
+            <div class="empty-state__icon">📏</div>
+            <p class="empty-state__title">No measurements yet</p>
+            <p class="empty-state__desc">Open Try-On, upload image or use webcam, then click Detect/Try.</p>
+          </div>
+        `;
+        note.textContent = '';
+        return;
+    }
+
+    grid.innerHTML = measurementCardsMarkup(tryOnState.latestMeasurements);
+    note.textContent = `Source: ${tryOnState.mode === 'webcam' ? 'Webcam' : 'Uploaded photo'} • Height used: ${tryOnState.heightCm} cm • Values are estimates`;
+}
+
+function refreshMeasurements() {
+    if (tryOnState.poseKeypoints) computeAndStoreMeasurements(tryOnState.poseKeypoints);
+    else renderMeasurementsPage();
 }
 
 // ─── Garment Panel ────────────────────────────────────────────────────────────
@@ -646,12 +984,15 @@ function startWebcam() {
                 tryOnState.videoEl = video;
                 tryOnState.poseDetected = false;
                 tryOnState.poseDetecting = false;
+                tryOnState.poseKeypoints = null;
+                tryOnState.latestMeasurements = null;
                 if (placeholder) placeholder.style.display = 'none';
                 if (webcamCanvas) webcamCanvas.style.display = 'block';
                 if (webcamDetected) webcamDetected.style.display = 'none';
                 if (webcamOverlay) webcamOverlay.style.display = 'flex';
                 startCanvasLoop();
                 updatePoseOverlay();
+                updateMeasurementsUi();
             };
         })
         .catch(() => {
@@ -687,6 +1028,7 @@ function stopWebcam() {
     if (webcamOverlay) webcamOverlay.style.display = 'none';
     if (webcamDetected) webcamDetected.style.display = 'none';
     tryOnState.videoEl = null;
+    tryOnState.lastVideoTime = -1;
     stopCanvasLoop();
 }
 

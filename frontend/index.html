@@ -31,6 +31,7 @@
     <div class="navbar__links" id="desktop-nav">
       <button class="navbar__link" data-page="home">Home</button>
       <button class="navbar__link" data-page="try-on">Try-On</button>
+      <button class="navbar__link" data-page="measure">Measure</button>
       <button class="navbar__link" data-page="recommendations">Recommendations</button>
       <button class="navbar__link" data-page="trends">Trends</button>
       <button class="navbar__link" data-page="dashboard">Dashboard</button>
@@ -47,6 +48,7 @@
     <div class="navbar__mobile-menu" id="mobile-menu">
       <button class="navbar__mobile-link" data-page="home">🏠 Home</button>
       <button class="navbar__mobile-link" data-page="try-on">📸 Try-On</button>
+      <button class="navbar__mobile-link" data-page="measure">📏 Measure</button>
       <button class="navbar__mobile-link" data-page="recommendations">✨ Recommendations</button>
       <button class="navbar__mobile-link" data-page="trends">📈 Trends</button>
       <button class="navbar__mobile-link" data-page="dashboard">🗂️ Dashboard</button>
@@ -229,28 +231,12 @@
 
                 <!-- Change photo button -->
                 <button
-                  onclick="document.getElementById('photo-upload-input').value='';tryOnState.uploadedImageUrl=null;tryOnState.poseDetected=false;renderTryOnCanvas();"
+                  onclick="clearUploadedPhoto()"
                   style="position:absolute;top:12px;right:12px;padding:8px 16px;border-radius:100px;border:none;background:rgba(0,0,0,0.6);color:white;font-size:13px;cursor:pointer">
                   ✕ Change Photo
                 </button>
               </div>
 
-              <!-- Keep hidden-img src updated when image is uploaded -->
-              <script>
-                document.getElementById('photo-upload-input').addEventListener('change', function(e) {
-                  const file = e.target.files[0];
-                  if (!file) return;
-                  const url = URL.createObjectURL(file);
-                  const img = document.getElementById('hidden-img');
-                  img.src = url;
-                  tryOnState.uploadedImageUrl = url;
-                  tryOnState.poseDetected = false;
-                  tryOnState.poseDetecting = false;
-                  renderTryOnCanvas();
-                  startCanvasLoop();
-                  updatePoseOverlay();
-                });
-              </script>
             </div>
 
             <!-- Webcam area -->
@@ -279,10 +265,16 @@
               <button class="control-btn" id="skeleton-toggle">🦴 Hide Skeleton</button>
               <button class="control-btn">🔗 Share Look</button>
               <button class="control-btn" id="save-look-btn">🤍 Save Look</button>
+              <label class="control-btn" style="gap:10px">
+                📏 Height
+                <input type="number" id="height-input" value="170" min="120" max="220" style="width:72px;border:none;background:transparent;color:var(--text-primary);font-weight:700;outline:none">
+                <span style="font-size:12px;color:var(--text-muted)">cm</span>
+              </label>
             </div>
 
             <!-- Fit Score card (shown when garment is selected) -->
             <div id="fit-score-card" class="fit-score-card" style="display:none"></div>
+            <div id="body-measurements-card" class="fit-score-card" style="display:none"></div>
           </div>
 
           <!-- Right: Garment Panel sidebar -->
@@ -299,6 +291,42 @@
         </div>
       </div>
     </div><!-- /page-try-on -->
+
+    <!-- ──────────────────────────────────────────────────────────────────────
+         MEASURE PAGE
+    ────────────────────────────────────────────────────────────────────────── -->
+    <div id="page-measure" class="page-section">
+      <div style="background:var(--bg-primary);min-height:100vh;padding:32px 24px">
+        <div class="container" style="max-width:1100px">
+          <div class="page-header">
+            <div class="badge" style="background:rgba(138,158,140,0.15);color:#8a9e8c">📏 BODY MEASURE</div>
+            <h1 class="page-title" style="margin-top:12px">AI Body Measurements</h1>
+            <p class="page-desc">Upload a photo or use webcam in Try-On, then detect pose to estimate body measurements.</p>
+          </div>
+
+          <div class="card" style="padding:24px;margin-bottom:18px">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+              <div>
+                <p style="color:var(--text-primary);font-weight:700;margin-bottom:6px">Measurement Input</p>
+                <p style="color:var(--text-secondary);font-size:14px">Set height and refresh measurements anytime.</p>
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                <label class="control-btn" style="gap:10px">
+                  Height
+                  <input type="number" id="measure-height-input" value="170" min="120" max="220" style="width:72px;border:none;background:transparent;color:var(--text-primary);font-weight:700;outline:none">
+                  <span style="font-size:12px;color:var(--text-muted)">cm</span>
+                </label>
+                <button class="btn btn-outline" onclick="refreshMeasurements()">Refresh</button>
+                <button class="btn btn-glow" onclick="showPage('try-on')">Open Try-On</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="measurements-page-grid" class="measurements-grid"></div>
+          <p id="measurements-page-note" style="color:var(--text-muted);font-size:13px;margin-top:16px"></p>
+        </div>
+      </div>
+    </div><!-- /page-measure -->
 
 
     <!-- ──────────────────────────────────────────────────────────────────────
@@ -540,6 +568,7 @@
       <div>
         <h4 class="footer__col-title">Features</h4>
         <p class="footer__col-item" onclick="showPage('try-on')">Virtual Try-On</p>
+        <p class="footer__col-item" onclick="showPage('measure')">Body Measure</p>
         <p class="footer__col-item" onclick="showPage('recommendations')">AI Recommendations</p>
         <p class="footer__col-item" onclick="showPage('try-on')">Fit Prediction</p>
         <p class="footer__col-item" onclick="showPage('trends')">Trend Insights</p>
