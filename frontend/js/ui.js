@@ -228,6 +228,7 @@ const tryOnState = {
     lastMeasurementTs: 0,
     poseKeypointsWidth: 640,
     poseKeypointsHeight: 480,
+    garmentRenderMode: 'stylized',
 };
 
 function initTryOnPage() {
@@ -618,9 +619,157 @@ function drawSkeleton(ctx, kp) {
     }
 }
 
+function clamp(v, min, max) {
+    return Math.min(max, Math.max(min, v));
+}
+
+function normalizeHex(hex) {
+    if (!hex) return '#c9a96e';
+    if (hex.length === 4) {
+        return `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+    }
+    return hex;
+}
+
+function shiftHex(hex, amount) {
+    const h = normalizeHex(hex);
+    const n = Number.parseInt(h.slice(1), 16);
+    const r = clamp(((n >> 16) & 255) + amount, 0, 255);
+    const g = clamp(((n >> 8) & 255) + amount, 0, 255);
+    const b = clamp((n & 255) + amount, 0, 255);
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+function createGarmentGradient(ctx, color, x, y, w, h) {
+    const grad = ctx.createLinearGradient(x, y, x, y + h);
+    grad.addColorStop(0, shiftHex(color, 30));
+    grad.addColorStop(0.5, normalizeHex(color));
+    grad.addColorStop(1, shiftHex(color, -35));
+    return grad;
+}
+
+function drawStylizedTop(ctx, kp, color) {
+    const ls = kp.leftShoulder;
+    const rs = kp.rightShoulder;
+    const lh = kp.leftHip;
+    const rh = kp.rightHip;
+    if (!ls || !rs || !lh || !rh) return;
+
+    const shoulderPad = Math.abs(rs[0] - ls[0]) * 0.32;
+    const topY = Math.min(ls[1], rs[1]) - 18;
+    const bottomY = Math.max(lh[1], rh[1]) + 12;
+    const leftX = ls[0] - shoulderPad;
+    const rightX = rs[0] + shoulderPad;
+
+    ctx.save();
+    ctx.globalAlpha = 0.72;
+    ctx.fillStyle = createGarmentGradient(ctx, color, leftX, topY, rightX - leftX, bottomY - topY);
+    ctx.beginPath();
+    ctx.moveTo(leftX, topY + 12);
+    ctx.quadraticCurveTo((ls[0] + rs[0]) / 2, topY - 18, rightX, topY + 12);
+    ctx.lineTo(rh[0] + shoulderPad * 0.3, bottomY);
+    ctx.quadraticCurveTo((lh[0] + rh[0]) / 2, bottomY + 8, lh[0] - shoulderPad * 0.3, bottomY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawStylizedDress(ctx, kp, color) {
+    const ls = kp.leftShoulder;
+    const rs = kp.rightShoulder;
+    const lh = kp.leftHip;
+    const rh = kp.rightHip;
+    if (!ls || !rs || !lh || !rh) return;
+
+    const shoulderW = Math.abs(rs[0] - ls[0]);
+    const topY = Math.min(ls[1], rs[1]) - 14;
+    const hemY = (kp.leftAnkle && kp.rightAnkle)
+        ? (Math.min(kp.leftAnkle[1], kp.rightAnkle[1]) - 8)
+        : (Math.max(lh[1], rh[1]) + shoulderW * 1.8);
+    const centerX = (ls[0] + rs[0]) / 2;
+    const topHalf = shoulderW * 0.8;
+    const hemHalf = shoulderW * 1.55;
+
+    ctx.save();
+    ctx.globalAlpha = 0.68;
+    ctx.fillStyle = createGarmentGradient(ctx, color, centerX - hemHalf, topY, hemHalf * 2, hemY - topY);
+    ctx.beginPath();
+    ctx.moveTo(centerX - topHalf, topY + 10);
+    ctx.quadraticCurveTo(centerX, topY - 12, centerX + topHalf, topY + 10);
+    ctx.lineTo(centerX + hemHalf, hemY);
+    ctx.lineTo(centerX - hemHalf, hemY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawStylizedPants(ctx, kp, color) {
+    const lh = kp.leftHip;
+    const rh = kp.rightHip;
+    if (!lh || !rh) return;
+    const la = kp.leftAnkle || [lh[0] - 16, lh[1] + 190];
+    const ra = kp.rightAnkle || [rh[0] + 16, rh[1] + 190];
+    const hipW = Math.abs(rh[0] - lh[0]);
+    const legW = hipW * 0.58;
+
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = createGarmentGradient(ctx, color, lh[0] - legW, lh[1], hipW + legW * 2, Math.max(la[1], ra[1]) - lh[1]);
+    ctx.beginPath();
+    ctx.moveTo(lh[0] - 12, lh[1] - 4);
+    ctx.lineTo((lh[0] + rh[0]) / 2 - 8, lh[1] + 12);
+    ctx.lineTo(la[0] - legW * 0.22, la[1]);
+    ctx.lineTo(la[0] + legW * 0.22, la[1]);
+    ctx.lineTo((lh[0] + rh[0]) / 2 + 2, lh[1] + 14);
+    ctx.lineTo(rh[0] + 12, rh[1] - 4);
+    ctx.lineTo(ra[0] + legW * 0.22, ra[1]);
+    ctx.lineTo(ra[0] - legW * 0.22, ra[1]);
+    ctx.lineTo((lh[0] + rh[0]) / 2 - 2, lh[1] + 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+}
+
+function drawStylizedGarment(ctx, kp, garmentType, color) {
+    if (garmentType === 'dresses') {
+        drawStylizedDress(ctx, kp, color);
+        return;
+    }
+    if (garmentType === 'pants') {
+        drawStylizedPants(ctx, kp, color);
+        return;
+    }
+    drawStylizedTop(ctx, kp, color);
+}
+
+function evaluateImageTransparency(img) {
+    try {
+        const w = 80;
+        const h = 100;
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const cctx = c.getContext('2d', { willReadFrequently: true });
+        cctx.drawImage(img, 0, 0, w, h);
+        const { data } = cctx.getImageData(0, 0, w, h);
+        let transparent = 0;
+        for (let i = 3; i < data.length; i += 4) {
+            if (data[i] < 245) transparent += 1;
+        }
+        return transparent / (w * h);
+    } catch (err) {
+        return 0;
+    }
+}
+
 /** Draw garment image overlay using keypoint positions. */
 function drawGarmentOverlay(ctx, kp, garmentImg, garmentType, cw, ch) {
     if (!kp.leftShoulder || !kp.rightShoulder || !kp.leftHip || !kp.rightHip) return;
+    const color = tryOnState.selectedGarment?.color || '#c9a96e';
+    if (tryOnState.garmentRenderMode === 'stylized') {
+        drawStylizedGarment(ctx, kp, garmentType, color);
+        return;
+    }
 
     const shoulderWidth = Math.abs(kp.rightShoulder[0] - kp.leftShoulder[0]);
     const shoulderMidX = (kp.leftShoulder[0] + kp.rightShoulder[0]) / 2;
@@ -683,7 +832,10 @@ function startCanvasLoop() {
             if (!kp) kp = simulatePoseKeypoints(canvas.width, canvas.height);
             tryOnState.poseKeypoints = kp;
             if (tryOnState.showSkeleton) drawSkeleton(ctx, kp);
-            if (tryOnState.selectedGarment && tryOnState.garmentImg) {
+            if (
+                tryOnState.selectedGarment
+                && (tryOnState.garmentRenderMode === 'stylized' || tryOnState.garmentImg)
+            ) {
                 drawGarmentOverlay(ctx, kp, tryOnState.garmentImg, tryOnState.selectedGarment.type, canvas.width, canvas.height);
             }
             const now = Date.now();
@@ -892,6 +1044,7 @@ function selectGarment(garmentId) {
     if (tryOnState.selectedGarment && tryOnState.selectedGarment.id === garmentId) {
         tryOnState.selectedGarment = null;
         tryOnState.garmentImg = null;
+        tryOnState.garmentRenderMode = 'stylized';
         renderGarmentPanel(tryOnState.allGarments, tryOnState.activeCategory);
         updateFitScoreCard();
         updatePoseOverlay();
@@ -908,7 +1061,15 @@ function selectGarment(garmentId) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.src = g.image;
-    img.onload = () => { tryOnState.garmentImg = img; };
+    img.onload = () => {
+        tryOnState.garmentImg = img;
+        const transparencyRatio = evaluateImageTransparency(img);
+        tryOnState.garmentRenderMode = transparencyRatio > 0.18 ? 'image' : 'stylized';
+    };
+    img.onerror = () => {
+        tryOnState.garmentImg = null;
+        tryOnState.garmentRenderMode = 'stylized';
+    };
 
     renderGarmentPanel(tryOnState.allGarments, tryOnState.activeCategory);
     updateFitScoreCard();
