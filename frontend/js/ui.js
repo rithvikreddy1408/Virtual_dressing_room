@@ -452,10 +452,22 @@ function runPoseDetection() {
     }, 1800);
 }
 
+function getPoseUiElements() {
+    if (tryOnState.mode === 'webcam') {
+        return {
+            overlay: document.getElementById('pose-overlay-webcam'),
+            detected: document.getElementById('pose-detected-badge-webcam'),
+        };
+    }
+    return {
+        overlay: document.getElementById('pose-overlay'),
+        detected: document.getElementById('pose-detected-badge'),
+    };
+}
+
 /** Show/hide the overlay on the canvas based on detection state. */
 function updatePoseOverlay() {
-    const overlay = document.getElementById('pose-overlay');
-    const detected = document.getElementById('pose-detected-badge');
+    const { overlay, detected } = getPoseUiElements();
     if (!overlay || !detected) return;
 
     if (tryOnState.poseDetected) {
@@ -473,7 +485,7 @@ function updatePoseOverlay() {
         overlay.style.display = 'flex';
         overlay.innerHTML = `
       <button class="btn btn-glow" onclick="runPoseDetection()" style="font-size:15px;padding:16px 36px">
-        ✨ Detect My Body Pose
+        ✨ Try On Selected Outfit
       </button>`;
     }
 }
@@ -602,6 +614,8 @@ function updateFitScoreCard() {
 function startWebcam() {
     const placeholder = document.getElementById('webcam-placeholder');
     const webcamCanvas = document.getElementById('pose-canvas-webcam');
+    const webcamOverlay = document.getElementById('pose-overlay-webcam');
+    const webcamDetected = document.getElementById('pose-detected-badge-webcam');
     if (placeholder) placeholder.style.display = 'flex';
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -630,13 +644,20 @@ function startWebcam() {
                     console.warn('Unable to autoplay webcam video:', err);
                 }
                 tryOnState.videoEl = video;
+                tryOnState.poseDetected = false;
+                tryOnState.poseDetecting = false;
                 if (placeholder) placeholder.style.display = 'none';
                 if (webcamCanvas) webcamCanvas.style.display = 'block';
+                if (webcamDetected) webcamDetected.style.display = 'none';
+                if (webcamOverlay) webcamOverlay.style.display = 'flex';
                 startCanvasLoop();
+                updatePoseOverlay();
             };
         })
         .catch(() => {
             if (webcamCanvas) webcamCanvas.style.display = 'none';
+            if (webcamOverlay) webcamOverlay.style.display = 'none';
+            if (webcamDetected) webcamDetected.style.display = 'none';
             if (placeholder) placeholder.innerHTML = `
         <div style="text-align:center">
           <div style="font-size:48px;margin-bottom:12px;opacity:0.5">📷</div>
@@ -652,6 +673,8 @@ function stopWebcam() {
     }
     const placeholder = document.getElementById('webcam-placeholder');
     const webcamCanvas = document.getElementById('pose-canvas-webcam');
+    const webcamOverlay = document.getElementById('pose-overlay-webcam');
+    const webcamDetected = document.getElementById('pose-detected-badge-webcam');
     if (placeholder) {
         placeholder.style.display = 'flex';
         placeholder.innerHTML = `
@@ -661,6 +684,8 @@ function stopWebcam() {
       </div>`;
     }
     if (webcamCanvas) webcamCanvas.style.display = 'none';
+    if (webcamOverlay) webcamOverlay.style.display = 'none';
+    if (webcamDetected) webcamDetected.style.display = 'none';
     tryOnState.videoEl = null;
     stopCanvasLoop();
 }

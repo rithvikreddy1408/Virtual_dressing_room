@@ -263,6 +263,14 @@
               </div>
               <div id="canvas-wrap-webcam" class="pose-canvas-wrap" style="margin-top:12px">
                 <canvas id="pose-canvas-webcam" class="pose-canvas" width="640" height="480" style="display:none"></canvas>
+                <div class="pose-overlay" id="pose-overlay-webcam" style="display:none">
+                  <button class="btn btn-glow" onclick="runPoseDetection()" style="font-size:15px;padding:16px 36px">
+                    ✨ Try On Selected Outfit
+                  </button>
+                </div>
+                <div class="pose-detected-badge" id="pose-detected-badge-webcam" style="display:none">
+                  ✓ Pose Detected — Select a Garment
+                </div>
               </div>
             </div>
 
